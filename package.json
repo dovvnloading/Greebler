@@ -12,12 +12,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "lint": "biome lint src",
+    "lint": "biome lint src tests playwright.config.ts vitest.config.ts",
+    "test:browser": "playwright test",
+    "test:browser:ui": "playwright test --ui",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "format": "biome format --write src biome.json package.json tsconfig.json",
-    "format:check": "biome ci --linter-enabled=false --assist-enabled=false src biome.json package.json tsconfig.json"
+    "format": "biome format --write src tests playwright.config.ts vitest.config.ts biome.json package.json tsconfig.json",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false src tests playwright.config.ts vitest.config.ts biome.json package.json tsconfig.json"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.4",
+    "@playwright/test": "1.61.1",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.17",
