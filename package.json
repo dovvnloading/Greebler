@@ -13,6 +13,8 @@
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "biome lint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "format": "biome format --write src biome.json package.json tsconfig.json",
     "format:check": "biome ci --linter-enabled=false --assist-enabled=false src biome.json package.json tsconfig.json"
@@ -35,6 +37,7 @@
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "4.1.10"
   }
 }
