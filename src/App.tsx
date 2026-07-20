@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { TextureGenerator, GenerationParams } from './TextureGenerator';
+import { TextureGenerator, type GenerationParams } from './TextureGenerator';
 import { Viewport3D } from './Viewport3D';
 import { Viewport2D } from './Viewport2D';
 import { Settings, Download, RefreshCcw, Box, Circle, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -20,12 +20,18 @@ const defaultParams: GenerationParams = {
   smallDensity: 0.4,
   gapSize: 4,
   complexity: 5,
-  palette: PALETTE_PRESETS['Default'],
+  palette: PALETTE_PRESETS.Default,
 };
 
 export default function App() {
   const [params, setParams] = useState<GenerationParams>(defaultParams);
-  const [maps, setMaps] = useState<{ albedo: string | null; height: string | null; normal: string | null; roughness: string | null; metalness: string | null }>({
+  const [maps, setMaps] = useState<{
+    albedo: string | null;
+    height: string | null;
+    normal: string | null;
+    roughness: string | null;
+    metalness: string | null;
+  }>({
     albedo: null,
     height: null,
     normal: null,
@@ -33,26 +39,36 @@ export default function App() {
     metalness: null,
   });
   const [isGenerating, setIsGenerating] = useState(false);
-  
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
   // Viewport State
   const [activeTab2D, setActiveTab2D] = useState<'albedo' | 'height' | 'normal'>('albedo');
   const [shape3D, setShape3D] = useState<'cube' | 'sphere'>('cube');
 
   const handleGenerate = useCallback(() => {
     setIsGenerating(true);
+    setGenerationError(null);
     // Use setTimeout to allow UI to update to "generating" state before heavy sync work
     setTimeout(() => {
-      const generator = new TextureGenerator(params);
-      const newMaps = generator.generateMaps();
-      setMaps(newMaps);
-      setIsGenerating(false);
+      try {
+        const generator = new TextureGenerator(params);
+        const newMaps = generator.generateMaps();
+        setMaps(newMaps);
+      } catch (error) {
+        setGenerationError(error instanceof Error ? error.message : 'Map generation failed unexpectedly.');
+      } finally {
+        setIsGenerating(false);
+      }
     }, 50);
   }, [params]);
 
-  // Generate on mount
+  // Generate once on mount while keeping the callback dependency honest.
+  const hasGeneratedOnMount = React.useRef(false);
   useEffect(() => {
+    if (hasGeneratedOnMount.current) return;
+    hasGeneratedOnMount.current = true;
     handleGenerate();
-  }, []);
+  }, [handleGenerate]);
 
   // Auto-generate when palette changes
   const prevPaletteRef = React.useRef(params.palette);
@@ -84,10 +100,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#151619] text-[#8E9299] font-sans p-4 flex flex-col md:flex-row gap-6 overflow-hidden">
-      
       {/* Sidebar Controls */}
       <aside className="w-full md:w-[380px] flex-shrink-0 flex flex-col h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar">
-        
         {/* Header */}
         <div className="neu-flat p-6 rounded-2xl flex items-center gap-4 m-4 mb-2">
           <div className="w-12 h-12 rounded-full neu-convex flex items-center justify-center text-[#F27D26]">
@@ -110,8 +124,11 @@ export default function App() {
           {/* Seed */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
-              <label className="text-[10px] uppercase tracking-widest text-[#8E9299]">Seed</label>
-              <button 
+              <label htmlFor="seed-input" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
+                Seed
+              </label>
+              <button
+                type="button"
                 onClick={handleRandomizeSeed}
                 className="w-6 h-6 rounded-full neu-convex flex items-center justify-center hover:text-[#F27D26] transition-colors"
                 title="Randomize Seed"
@@ -119,15 +136,18 @@ export default function App() {
                 <RefreshCcw size={12} />
               </button>
             </div>
-            <NumberDial value={params.seed} onChange={(v) => handleParamChange('seed', v)} />
+            <NumberDial id="seed-input" value={params.seed} onChange={(v) => handleParamChange('seed', v)} />
           </div>
 
           {/* Style */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
-              <label className="text-[10px] uppercase tracking-widest text-[#8E9299]">Style</label>
+              <label htmlFor="style-select" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
+                Style
+              </label>
             </div>
-            <CustomSelect 
+            <CustomSelect
+              id="style-select"
               value={params.style}
               onChange={(v) => handleParamChange('style', v)}
               options={[
@@ -140,9 +160,12 @@ export default function App() {
           {/* Resolution */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
-              <label className="text-[10px] uppercase tracking-widest text-[#8E9299]">Resolution</label>
+              <label htmlFor="resolution-select" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
+                Resolution
+              </label>
             </div>
-            <CustomSelect 
+            <CustomSelect
+              id="resolution-select"
               value={params.resolution}
               onChange={(v) => handleParamChange('resolution', v)}
               options={[
@@ -160,19 +183,21 @@ export default function App() {
           {/* Albedo Color Map */}
           <div className="flex flex-col gap-5">
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8E9299]">Albedo Color Map</h3>
-            
+
             <div className="flex gap-3">
               <div className="flex-1">
-                <CustomSelect 
+                <CustomSelect
                   value=""
                   placeholder="Presets..."
-                  onChange={(v) => { if (v) handleParamChange('palette', PALETTE_PRESETS[v]); }}
-                  options={Object.keys(PALETTE_PRESETS).map(k => ({ label: k, value: k }))}
+                  onChange={(v) => {
+                    if (v) handleParamChange('palette', PALETTE_PRESETS[v]);
+                  }}
+                  options={Object.keys(PALETTE_PRESETS).map((k) => ({ label: k, value: k }))}
                 />
               </div>
               <div className="relative flex items-center">
-                <input 
-                  type="color" 
+                <input
+                  type="color"
                   onChange={(e) => handleParamChange('palette', generatePalette(e.target.value))}
                   className="w-11 h-11 rounded cursor-pointer opacity-0 absolute inset-0 z-10"
                   title="Generate from base color"
@@ -185,10 +210,10 @@ export default function App() {
 
             <div className="flex gap-2 justify-between">
               {params.palette.map((color, idx) => (
-                <div key={idx} className="flex flex-col items-center gap-2 group">
+                <div key={color} className="flex flex-col items-center gap-2 group">
                   <div className="relative w-10 h-10 rounded-lg neu-convex overflow-hidden border border-[rgba(255,255,255,0.05)]">
-                    <input 
-                      type="color" 
+                    <input
+                      type="color"
                       value={color}
                       onChange={(e) => {
                         const newPal = [...params.palette];
@@ -199,28 +224,34 @@ export default function App() {
                     />
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
+                    <button
+                      type="button"
                       onClick={() => {
                         if (idx > 0) {
                           const newPal = [...params.palette];
-                          [newPal[idx-1], newPal[idx]] = [newPal[idx], newPal[idx-1]];
+                          [newPal[idx - 1], newPal[idx]] = [newPal[idx], newPal[idx - 1]];
                           handleParamChange('palette', newPal);
                         }
                       }}
                       disabled={idx === 0}
                       className="text-[#8E9299] hover:text-[#F27D26] disabled:opacity-30"
-                    ><ChevronLeft size={12}/></button>
-                    <button 
+                    >
+                      <ChevronLeft size={12} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         if (idx < params.palette.length - 1) {
                           const newPal = [...params.palette];
-                          [newPal[idx+1], newPal[idx]] = [newPal[idx], newPal[idx+1]];
+                          [newPal[idx + 1], newPal[idx]] = [newPal[idx], newPal[idx + 1]];
                           handleParamChange('palette', newPal);
                         }
                       }}
                       disabled={idx === params.palette.length - 1}
                       className="text-[#8E9299] hover:text-[#F27D26] disabled:opacity-30"
-                    ><ChevronRight size={12}/></button>
+                    >
+                      <ChevronRight size={12} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -232,10 +263,34 @@ export default function App() {
           {/* Densities */}
           <div className="flex flex-col gap-5">
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8E9299]">Layer Densities</h3>
-            
-            <SliderControl label="Large Panels" value={params.largeDensity} min={0} max={1} step={0.05} onChange={(v) => handleParamChange('largeDensity', v)} />
-            <SliderControl label="Medium Details" value={params.mediumDensity} min={0} max={1} step={0.05} onChange={(v) => handleParamChange('mediumDensity', v)} />
-            <SliderControl label="Small Greebles" value={params.smallDensity} min={0} max={1} step={0.05} onChange={(v) => handleParamChange('smallDensity', v)} />
+
+            <SliderControl
+              id="large-density"
+              label="Large Panels"
+              value={params.largeDensity}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(v) => handleParamChange('largeDensity', v)}
+            />
+            <SliderControl
+              id="medium-density"
+              label="Medium Details"
+              value={params.mediumDensity}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(v) => handleParamChange('mediumDensity', v)}
+            />
+            <SliderControl
+              id="small-density"
+              label="Small Greebles"
+              value={params.smallDensity}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={(v) => handleParamChange('smallDensity', v)}
+            />
           </div>
 
           <hr className="border-[#2a2b30]" />
@@ -243,26 +298,43 @@ export default function App() {
           {/* Geometry */}
           <div className="flex flex-col gap-5">
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8E9299]">Geometry</h3>
-            
-            <SliderControl label="Gap Size" value={params.gapSize} min={0} max={16} step={1} onChange={(v) => handleParamChange('gapSize', v)} />
-            <SliderControl label="Complexity" value={params.complexity} min={1} max={8} step={1} onChange={(v) => handleParamChange('complexity', v)} />
+
+            <SliderControl
+              id="gap-size"
+              label="Gap Size"
+              value={params.gapSize}
+              min={0}
+              max={16}
+              step={1}
+              onChange={(v) => handleParamChange('gapSize', v)}
+            />
+            <SliderControl
+              id="complexity"
+              label="Complexity"
+              value={params.complexity}
+              min={1}
+              max={8}
+              step={1}
+              onChange={(v) => handleParamChange('complexity', v)}
+            />
           </div>
 
           {/* Generate Button */}
-          <button 
+          {generationError && (
+            <div role="alert" className="rounded-lg border border-[#7a2f1d] bg-[#2a1712] p-3 text-xs text-[#ffb08c]">
+              {generationError}
+            </div>
+          )}
+          <button
+            type="button"
             onClick={handleGenerate}
             disabled={isGenerating}
             className={`w-full mt-4 py-4 rounded-xl neu-convex font-bold tracking-[0.2em] uppercase text-xs transition-all flex items-center justify-center gap-3 border border-[rgba(255,255,255,0.05)]
               ${isGenerating ? 'text-[#8E9299] opacity-50 cursor-not-allowed' : 'text-[#F27D26] hover:brightness-110 active:neu-pressed'}`}
           >
-            {isGenerating ? (
-              <RefreshCcw size={16} className="animate-spin" />
-            ) : (
-              <RefreshCcw size={16} />
-            )}
+            {isGenerating ? <RefreshCcw size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
             {isGenerating ? 'Processing...' : 'Generate Maps'}
           </button>
-
         </div>
 
         {/* Export */}
@@ -271,24 +343,40 @@ export default function App() {
             <Download size={14} /> Export
           </h2>
           <div className="grid grid-cols-3 gap-3">
-            <ExportButton label="ALB" onClick={() => downloadMap(maps.albedo, 'greeble_albedo.png')} disabled={!maps.albedo} />
-            <ExportButton label="NRM" onClick={() => downloadMap(maps.normal, 'greeble_normal.png')} disabled={!maps.normal} />
-            <ExportButton label="HGT" onClick={() => downloadMap(maps.height, 'greeble_height.png')} disabled={!maps.height} />
+            <ExportButton
+              label="ALB"
+              onClick={() => downloadMap(maps.albedo, 'greeble_albedo.png')}
+              disabled={!maps.albedo}
+            />
+            <ExportButton
+              label="NRM"
+              onClick={() => downloadMap(maps.normal, 'greeble_normal.png')}
+              disabled={!maps.normal}
+            />
+            <ExportButton
+              label="HGT"
+              onClick={() => downloadMap(maps.height, 'greeble_height.png')}
+              disabled={!maps.height}
+            />
           </div>
         </div>
-
       </aside>
 
       {/* Main Viewport Area */}
       <main className="flex-1 flex flex-col gap-6 h-[calc(100vh-2rem)]">
-        
         {/* 2D Viewport */}
         <div className="flex-1 neu-flat rounded-2xl p-4 flex flex-col relative min-h-[300px]">
           {/* Tabs */}
           <div className="absolute top-6 left-6 z-10 flex gap-3">
-            <TabButton active={activeTab2D === 'albedo'} onClick={() => setActiveTab2D('albedo')}>Albedo</TabButton>
-            <TabButton active={activeTab2D === 'normal'} onClick={() => setActiveTab2D('normal')}>Normal</TabButton>
-            <TabButton active={activeTab2D === 'height'} onClick={() => setActiveTab2D('height')}>Height</TabButton>
+            <TabButton active={activeTab2D === 'albedo'} onClick={() => setActiveTab2D('albedo')}>
+              Albedo
+            </TabButton>
+            <TabButton active={activeTab2D === 'normal'} onClick={() => setActiveTab2D('normal')}>
+              Normal
+            </TabButton>
+            <TabButton active={activeTab2D === 'height'} onClick={() => setActiveTab2D('height')}>
+              Height
+            </TabButton>
           </div>
           <Viewport2D albedoMap={maps.albedo} normalMap={maps.normal} heightMap={maps.height} activeTab={activeTab2D} />
         </div>
@@ -298,21 +386,24 @@ export default function App() {
           {/* Controls */}
           <div className="absolute top-6 left-6 z-10 flex gap-3">
             <IconButton active={shape3D === 'cube'} onClick={() => setShape3D('cube')} icon={<Box size={16} />} />
-            <IconButton active={shape3D === 'sphere'} onClick={() => setShape3D('sphere')} icon={<Circle size={16} />} />
+            <IconButton
+              active={shape3D === 'sphere'}
+              onClick={() => setShape3D('sphere')}
+              icon={<Circle size={16} />}
+            />
           </div>
           <div className="absolute top-6 right-6 z-10 text-[10px] font-mono text-[#8E9299] uppercase tracking-[0.15em]">
             Displacement Preview
           </div>
-          <Viewport3D 
-            albedoMap={maps.albedo} 
-            normalMap={maps.normal} 
-            heightMap={maps.height} 
+          <Viewport3D
+            albedoMap={maps.albedo}
+            normalMap={maps.normal}
+            heightMap={maps.height}
             roughnessMap={maps.roughness}
             metalnessMap={maps.metalness}
-            shape={shape3D} 
+            shape={shape3D}
           />
         </div>
-
       </main>
     </div>
   );

@@ -12,7 +12,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "lint": "tsc --noEmit"
+    "lint": "biome lint src",
+    "typecheck": "tsc --noEmit",
+    "format": "biome format --write src biome.json package.json tsconfig.json",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false src biome.json package.json tsconfig.json"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -23,6 +26,7 @@
     "three": "^0.183.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.4",
     "@tailwindcss/vite": "^4.1.14",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.17",
