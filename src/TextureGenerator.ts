@@ -34,6 +34,8 @@ export class TextureGenerator {
   private ctx: CanvasRenderingContext2D;
   private albedoCanvas: HTMLCanvasElement;
   private albedoCtx: CanvasRenderingContext2D;
+  private materialAlbedoCanvas: HTMLCanvasElement;
+  private materialAlbedoCtx: CanvasRenderingContext2D;
   private roughnessCanvas: HTMLCanvasElement;
   private roughnessCtx: CanvasRenderingContext2D;
   private metalnessCanvas: HTMLCanvasElement;
@@ -57,6 +59,14 @@ export class TextureGenerator {
     this.albedoCanvas.width = params.resolution;
     this.albedoCanvas.height = params.resolution;
     this.albedoCtx = getCanvasContext(this.albedoCanvas);
+
+    // Keep authored material colors separate from the height-derived albedo
+    // pass. The latter is generated after subdivision and must not erase
+    // material-specific overlays such as wires and pipes.
+    this.materialAlbedoCanvas = document.createElement('canvas');
+    this.materialAlbedoCanvas.width = params.resolution;
+    this.materialAlbedoCanvas.height = params.resolution;
+    this.materialAlbedoCtx = getCanvasContext(this.materialAlbedoCanvas);
 
     // Roughness Map
     this.roughnessCanvas = document.createElement('canvas');
@@ -96,6 +106,7 @@ export class TextureGenerator {
     // Base Albedo (Palette[0])
     this.albedoCtx.fillStyle = this.params.palette[0] || '#1a1a1a';
     this.albedoCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.materialAlbedoCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     // Base Roughness (Matte background)
     this.roughnessCtx.fillStyle = '#cccccc'; // 0.8
@@ -164,6 +175,12 @@ export class TextureGenerator {
       albedoImgData.data[i + 3] = 255; // Alpha
     }
     this.albedoCtx.putImageData(albedoImgData, 0, 0);
+
+    // Re-apply authored material colors after the height-to-palette pass.
+    // Drawing the height canvas directly into the final albedo would
+    // otherwise overwrite these overlays while leaving roughness/metalness
+    // unchanged, producing an inconsistent PBR set.
+    this.albedoCtx.drawImage(this.materialAlbedoCanvas, 0, 0);
 
     const albedoDataUrl = this.albedoCanvas.toDataURL('image/png');
     const roughnessDataUrl = this.roughnessCanvas.toDataURL('image/png');
@@ -633,14 +650,14 @@ export class TextureGenerator {
     }
 
     // Draw Albedo, Roughness, Metalness (Solid Lines)
-    this.albedoCtx.strokeStyle = albedoColor;
-    this.albedoCtx.lineWidth = radius * 2;
-    this.albedoCtx.lineCap = 'round';
-    this.albedoCtx.lineJoin = 'round';
-    this.albedoCtx.beginPath();
-    this.albedoCtx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) this.albedoCtx.lineTo(points[i].x, points[i].y);
-    this.albedoCtx.stroke();
+    this.materialAlbedoCtx.strokeStyle = albedoColor;
+    this.materialAlbedoCtx.lineWidth = radius * 2;
+    this.materialAlbedoCtx.lineCap = 'round';
+    this.materialAlbedoCtx.lineJoin = 'round';
+    this.materialAlbedoCtx.beginPath();
+    this.materialAlbedoCtx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) this.materialAlbedoCtx.lineTo(points[i].x, points[i].y);
+    this.materialAlbedoCtx.stroke();
 
     const roughVal = Math.floor(roughness * 255);
     this.roughnessCtx.strokeStyle = `rgb(${roughVal}, ${roughVal}, ${roughVal})`;
