@@ -39,8 +39,8 @@ Goal: every following batch has an online build that can be tested immediately.
 - [x] Remove the client-side API-key injection from the Vite build.
 - [x] Restore project README and correct site metadata.
 - [x] Add this working implementation plan.
-- [ ] Enable GitHub Pages for the repository.
-- [ ] Confirm the first live deployment at `https://dovvnloading.github.io/Greebler/`.
+- [x] Enable GitHub Pages for the repository.
+- [x] Confirm the first live deployment at `https://dovvnloading.github.io/Greebler/`.
 
 Acceptance:
 
