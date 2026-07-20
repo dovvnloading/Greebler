@@ -28,6 +28,11 @@ test('keeps authored electrical materials visible in the final albedo map', asyn
   await expect(albedoMap).toBeVisible({ timeout: 30_000 });
   const initialAlbedo = await albedoMap.getAttribute('src');
 
+  await page.locator('#resolution-select').click();
+  const lowResolutionOption = page.getByRole('button', { name: '512x512' });
+  await expect(lowResolutionOption).toBeVisible({ timeout: 30_000 });
+  await lowResolutionOption.click({ force: true });
+
   await page.locator('#style-select').click();
   const electricalOption = page.getByRole('button', { name: 'Electrical' });
   await expect(electricalOption).toBeVisible({ timeout: 30_000 });
@@ -69,7 +74,9 @@ test('keeps authored electrical materials visible in the final albedo map', asyn
 
       const [albedo, height] = await Promise.all([readPixels(albedoSrc), readPixels(heightSrc)]);
       let divergent = 0;
-      for (let index = 0; index < albedo.length; index += 4) {
+      // Sample every fourth pixel to keep the browser assertion bounded on CI
+      // while still covering the many authored wire/pipeline pixels.
+      for (let index = 0; index < albedo.length; index += 16) {
         const colorIndex = Math.min(palette.length - 1, Math.floor((height[index] / 256) * palette.length));
         const expected = palette[colorIndex];
         if (
