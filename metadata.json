@@ -1,0 +1,5 @@
+{
+  "name": "Greeble Generator",
+  "description": "Procedural texture generation tool for high-resolution greeble maps (Albedo, Height, Normal) with a neumorphic UI.",
+  "requestFramePermissions": []
+}
