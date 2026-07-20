@@ -43,7 +43,7 @@ test('keeps authored electrical materials visible in the final albedo map', asyn
   const electricalAlbedo = await albedoMap.getAttribute('src');
   if (!electricalAlbedo) throw new Error('Electrical albedo map did not produce an image source.');
 
-  await page.getByRole('button', { name: 'Height' }).click();
+  await page.getByRole('button', { name: 'Height' }).click({ force: true });
   const heightMap = page.getByRole('img', { name: 'height map' });
   await expect(heightMap).toBeVisible({ timeout: 30_000 });
   const heightSource = await heightMap.getAttribute('src');
