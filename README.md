@@ -4,7 +4,7 @@ Greebler is a procedural sci-fi surface and PBR material generator built with Re
 
 ## Local development
 
-Requirements: Node.js 24 and npm.
+Requirements: Node.js 24 and npm 11 or newer.
 
 ```bash
 npm ci
