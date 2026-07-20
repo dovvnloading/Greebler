@@ -13,6 +13,8 @@ interface Viewport3DProps {
   shape: 'cube' | 'sphere';
 }
 
+const PREVIEW_SEGMENTS = 64;
+
 const MeshPreview = ({ albedoMap, normalMap, heightMap, roughnessMap, metalnessMap, shape }: Viewport3DProps) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -46,7 +48,11 @@ const MeshPreview = ({ albedoMap, normalMap, heightMap, roughnessMap, metalnessM
 
   return (
     <mesh ref={meshRef} castShadow receiveShadow>
-      {shape === 'cube' ? <boxGeometry args={[2, 2, 2, 256, 256, 256]} /> : <sphereGeometry args={[1.5, 256, 256]} />}
+      {shape === 'cube' ? (
+        <boxGeometry args={[2, 2, 2, PREVIEW_SEGMENTS, PREVIEW_SEGMENTS, PREVIEW_SEGMENTS]} />
+      ) : (
+        <sphereGeometry args={[1.5, PREVIEW_SEGMENTS, PREVIEW_SEGMENTS]} />
+      )}
       {albedo && normal && height && roughness && metalness ? (
         <meshStandardMaterial
           map={albedo}

@@ -39,5 +39,11 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests
+        run: npm run test:browser
+
       - name: Build GitHub Pages artifact
         run: npm run build
