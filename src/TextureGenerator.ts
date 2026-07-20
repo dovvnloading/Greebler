@@ -1,4 +1,10 @@
-import * as THREE from 'three';
+function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    throw new Error('Greebler requires a browser with 2D canvas support. Try a current desktop browser.');
+  }
+  return context;
+}
 
 export interface GenerationParams {
   style: 'tech' | 'electrical';
@@ -39,30 +45,30 @@ export class TextureGenerator {
   constructor(params: GenerationParams) {
     this.params = params;
     this.scale = params.resolution / 1024;
-    
+
     // Height Map (Main)
     this.canvas = document.createElement('canvas');
     this.canvas.width = params.resolution;
     this.canvas.height = params.resolution;
-    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
-    
+    this.ctx = getCanvasContext(this.canvas);
+
     // Albedo Map
     this.albedoCanvas = document.createElement('canvas');
     this.albedoCanvas.width = params.resolution;
     this.albedoCanvas.height = params.resolution;
-    this.albedoCtx = this.albedoCanvas.getContext('2d', { willReadFrequently: true })!;
-    
+    this.albedoCtx = getCanvasContext(this.albedoCanvas);
+
     // Roughness Map
     this.roughnessCanvas = document.createElement('canvas');
     this.roughnessCanvas.width = params.resolution;
     this.roughnessCanvas.height = params.resolution;
-    this.roughnessCtx = this.roughnessCanvas.getContext('2d', { willReadFrequently: true })!;
-    
+    this.roughnessCtx = getCanvasContext(this.roughnessCanvas);
+
     // Metalness Map
     this.metalnessCanvas = document.createElement('canvas');
     this.metalnessCanvas.width = params.resolution;
     this.metalnessCanvas.height = params.resolution;
-    this.metalnessCtx = this.metalnessCanvas.getContext('2d', { willReadFrequently: true })!;
+    this.metalnessCtx = getCanvasContext(this.metalnessCanvas);
 
     this.randomSeed = params.seed;
   }
@@ -82,19 +88,19 @@ export class TextureGenerator {
 
   public generateMaps(): { albedo: string; height: string; normal: string; roughness: string; metalness: string } {
     this.randomSeed = this.params.seed;
-    
+
     // Initialize all maps
     this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
+
     // Base Albedo (Palette[0])
     this.albedoCtx.fillStyle = this.params.palette[0] || '#1a1a1a';
     this.albedoCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
+
     // Base Roughness (Matte background)
     this.roughnessCtx.fillStyle = '#cccccc'; // 0.8
     this.roughnessCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
+
     // Base Metalness (Non-metal background)
     this.metalnessCtx.fillStyle = '#000000'; // 0.0
     this.metalnessCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -116,29 +122,25 @@ export class TextureGenerator {
 
     // Start recursive subdivision
     const gap = this.params.gapSize * this.scale;
-    this.subdivide(
-      gap,
-      gap,
-      this.canvas.width - gap * 2,
-      this.canvas.height - gap * 2,
-      0
-    );
+    this.subdivide(gap, gap, this.canvas.width - gap * 2, this.canvas.height - gap * 2, 0);
 
     const heightDataUrl = this.canvas.toDataURL('image/png');
-    
+
     // 2. Generate Albedo Map (Colorizer - Discrete Levels)
     // We overwrite the PBR albedo with the discrete color map based on height levels.
     // This creates distinct bands of color rather than a smooth gradient.
     this.albedoCtx.drawImage(this.canvas, 0, 0);
     const albedoImgData = this.albedoCtx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-    
+
     const hexToRgb = (hex: string) => {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      } : { r: 0, g: 0, b: 0 };
+      return result
+        ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16),
+          }
+        : { r: 0, g: 0, b: 0 };
     };
 
     const rgbPalette = this.params.palette.map(hexToRgb);
@@ -146,16 +148,16 @@ export class TextureGenerator {
 
     for (let i = 0; i < albedoImgData.data.length; i += 4) {
       const h = albedoImgData.data[i]; // Use red channel as height
-      
+
       // Map height (0-255) to a discrete palette index
       // We use Math.floor to create hard steps between colors
       const colorIndex = Math.min(numColors - 1, Math.floor((h / 256) * numColors));
-      
+
       const color = rgbPalette[colorIndex];
 
       // Add a tiny bit of noise to break up perfect uniformity within bands, if desired
       // But for now, we stick to the requested "mapped based on lightness levels"
-      
+
       albedoImgData.data[i] = color.r;
       albedoImgData.data[i + 1] = color.g;
       albedoImgData.data[i + 2] = color.b;
@@ -171,7 +173,7 @@ export class TextureGenerator {
     const normalCanvas = document.createElement('canvas');
     normalCanvas.width = this.canvas.width;
     normalCanvas.height = this.canvas.height;
-    const normalCtx = normalCanvas.getContext('2d')!;
+    const normalCtx = getCanvasContext(normalCanvas);
     const heightImgData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
     const normalImgData = normalCtx.createImageData(this.canvas.width, this.canvas.height);
 
@@ -182,7 +184,7 @@ export class TextureGenerator {
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const idx = (y * width + x) * 4;
-        
+
         // Get neighboring heights (handling edges)
         const hL = x > 0 ? heightImgData.data[(y * width + (x - 1)) * 4] / 255 : heightImgData.data[idx] / 255;
         const hR = x < width - 1 ? heightImgData.data[(y * width + (x + 1)) * 4] / 255 : heightImgData.data[idx] / 255;
@@ -221,7 +223,7 @@ export class TextureGenerator {
 
   private drawElectricalPanel(x: number, y: number, w: number, h: number, tier: 'large' | 'medium' | 'small') {
     const isRecessed = this.random() < 0.4;
-    
+
     if (isRecessed) {
       // Draw recessed area with wires
       const baseHeight = this.randomRange(20, 40);
@@ -233,7 +235,7 @@ export class TextureGenerator {
       this.ctx.fillRect(x, y, w, h);
       this.ctx.fillStyle = `rgb(${baseHeight}, ${baseHeight}, ${baseHeight})`;
       this.ctx.fillRect(x + 2 * this.scale, y + 2 * this.scale, w - 4 * this.scale, h - 4 * this.scale);
-      
+
       const margin = 6 * this.scale;
       const ix = x + margin;
       const iy = y + margin;
@@ -257,7 +259,7 @@ export class TextureGenerator {
         else if (r < 0.7) this.drawTerminals(ix, iy, iw, ih, baseHeight);
         else this.drawCircuitTraces(ix, iy, iw, ih, baseHeight);
       }
-      
+
       // Bolts on corners
       if (this.random() < 0.5) {
         this.drawBolts(x + 2 * this.scale, y + 2 * this.scale, w - 4 * this.scale, h - 4 * this.scale, baseHeight);
@@ -287,19 +289,23 @@ export class TextureGenerator {
       const offset = (i - (numWires - 1) / 2) * spacing;
       const points = [];
 
-      if (pattern === 0) { // Left to Bottom
+      if (pattern === 0) {
+        // Left to Bottom
         points.push({ x: x, y: turnY + offset });
         points.push({ x: turnX + offset, y: turnY + offset });
         points.push({ x: turnX + offset, y: y + h });
-      } else if (pattern === 1) { // Left to Top
+      } else if (pattern === 1) {
+        // Left to Top
         points.push({ x: x, y: turnY + offset });
         points.push({ x: turnX - offset, y: turnY + offset });
         points.push({ x: turnX - offset, y: y });
-      } else if (pattern === 2) { // Top to Right
+      } else if (pattern === 2) {
+        // Top to Right
         points.push({ x: turnX + offset, y: y });
         points.push({ x: turnX + offset, y: turnY + offset });
         points.push({ x: x + w, y: turnY + offset });
-      } else { // Top to Left
+      } else {
+        // Top to Left
         points.push({ x: turnX + offset, y: y });
         points.push({ x: turnX + offset, y: turnY - offset });
         points.push({ x: x, y: turnY - offset });
@@ -317,16 +323,32 @@ export class TextureGenerator {
     for (let i = 0; i < numWires; i++) {
       const wireHeight = baseHeight + this.randomRange(20, 60);
       const heightScale = this.randomRange(30, 60);
-      
+
       if (isHorizontal) {
         const py = y + spacing * i + spacing / 2;
-        this.drawSmoothWire([{x: x, y: py}, {x: x + w, y: py}], radius, wireHeight, heightScale);
+        this.drawSmoothWire(
+          [
+            { x: x, y: py },
+            { x: x + w, y: py },
+          ],
+          radius,
+          wireHeight,
+          heightScale,
+        );
       } else {
         const px = x + spacing * i + spacing / 2;
-        this.drawSmoothWire([{x: px, y: y}, {x: px, y: y + h}], radius, wireHeight, heightScale);
+        this.drawSmoothWire(
+          [
+            { x: px, y: y },
+            { x: px, y: y + h },
+          ],
+          radius,
+          wireHeight,
+          heightScale,
+        );
       }
     }
-    
+
     // Draw brackets
     if (this.random() < 0.7) {
       const numBrackets = this.randomInt(1, 3);
@@ -351,25 +373,61 @@ export class TextureGenerator {
     const pipeHeight = baseHeight + 40;
     const cx = x + w / 2;
     const cy = y + h / 2;
-    
+
     // Draw base pipe
     if (isHorizontal) {
-      this.drawSmoothWire([{x: x, y: cy}, {x: x + w, y: cy}], radius, pipeHeight, 50, 'pipe');
+      this.drawSmoothWire(
+        [
+          { x: x, y: cy },
+          { x: x + w, y: cy },
+        ],
+        radius,
+        pipeHeight,
+        50,
+        'pipe',
+      );
     } else {
-      this.drawSmoothWire([{x: cx, y: y}, {x: cx, y: y + h}], radius, pipeHeight, 50, 'pipe');
+      this.drawSmoothWire(
+        [
+          { x: cx, y: y },
+          { x: cx, y: y + h },
+        ],
+        radius,
+        pipeHeight,
+        50,
+        'pipe',
+      );
     }
-    
+
     // Draw ribs
     const ribSpacing = 6 * this.scale;
     const ribRadius = radius + 2 * this.scale;
-    
+
     if (isHorizontal) {
       for (let px = x + ribSpacing; px < x + w - ribSpacing; px += ribSpacing) {
-        this.drawSmoothWire([{x: px, y: cy}, {x: px + 2 * this.scale, y: cy}], ribRadius, pipeHeight, 50, 'pipe');
+        this.drawSmoothWire(
+          [
+            { x: px, y: cy },
+            { x: px + 2 * this.scale, y: cy },
+          ],
+          ribRadius,
+          pipeHeight,
+          50,
+          'pipe',
+        );
       }
     } else {
       for (let py = y + ribSpacing; py < y + h - ribSpacing; py += ribSpacing) {
-        this.drawSmoothWire([{x: cx, y: py}, {x: cx, y: py + 2 * this.scale}], ribRadius, pipeHeight, 50, 'pipe');
+        this.drawSmoothWire(
+          [
+            { x: cx, y: py },
+            { x: cx, y: py + 2 * this.scale },
+          ],
+          ribRadius,
+          pipeHeight,
+          50,
+          'pipe',
+        );
       }
     }
   }
@@ -380,16 +438,16 @@ export class TextureGenerator {
     const by = y + margin;
     const bw = w - margin * 2;
     const bh = h - margin * 2;
-    
+
     if (bw < 20 * this.scale || bh < 20 * this.scale) return;
-    
+
     const boardHeight = baseHeight + 10;
     this.ctx.fillStyle = `rgb(${boardHeight}, ${boardHeight}, ${boardHeight})`;
     this.ctx.fillRect(bx, by, bw, bh);
-    
+
     // Draw traces
     this.drawCircuitTraces(bx, by, bw, bh, boardHeight);
-    
+
     // Draw chips
     const numChips = this.randomInt(1, 4);
     for (let i = 0; i < numChips; i++) {
@@ -404,13 +462,13 @@ export class TextureGenerator {
   private drawTerminals(x: number, y: number, w: number, h: number, baseHeight: number) {
     const isHorizontal = w > h;
     const termHeight = baseHeight + 30;
-    
+
     this.ctx.fillStyle = `rgb(${termHeight}, ${termHeight}, ${termHeight})`;
     this.ctx.fillRect(x + 4 * this.scale, y + 4 * this.scale, w - 8 * this.scale, h - 8 * this.scale);
-    
+
     const spacing = 12 * this.scale;
     this.ctx.fillStyle = `rgb(${Math.max(0, termHeight - 40)}, ${Math.max(0, termHeight - 40)}, ${Math.max(0, termHeight - 40)})`;
-    
+
     if (isHorizontal) {
       for (let px = x + spacing; px < x + w - spacing; px += spacing) {
         this.ctx.fillRect(px, y + 8 * this.scale, 4 * this.scale, h - 16 * this.scale);
@@ -437,60 +495,21 @@ export class TextureGenerator {
   private drawJunctionBox(x: number, y: number, w: number, h: number, baseHeight: number) {
     const boxHeight = baseHeight + this.randomRange(60, 100);
     const bevel = 4 * this.scale;
-    
+
     this.ctx.fillStyle = `rgb(${Math.max(0, boxHeight - 50)}, ${Math.max(0, boxHeight - 50)}, ${Math.max(0, boxHeight - 50)})`;
     this.ctx.fillRect(x, y, w, h);
-    
+
     this.ctx.fillStyle = `rgb(${boxHeight}, ${boxHeight}, ${boxHeight})`;
     this.ctx.fillRect(x + bevel, y + bevel, w - bevel * 2, h - bevel * 2);
-    
+
     this.drawBolts(x + bevel, y + bevel, w - bevel * 2, h - bevel * 2, boxHeight);
-    
+
     // Add a central feature
     if (w > 32 * this.scale && h > 32 * this.scale) {
       const cx = x + w / 2;
       const cy = y + h / 2;
       const r = Math.min(w, h) * 0.2;
       this.drawWireCap(cx, cy, r, boxHeight + 40);
-    }
-  }
-
-  private drawCapacitorBank(x: number, y: number, w: number, h: number, baseHeight: number) {
-    const capSize = this.randomRange(16, 32) * this.scale;
-    const cols = Math.max(1, Math.floor(w / capSize));
-    const rows = Math.max(1, Math.floor(h / capSize));
-    const spacingX = w / cols;
-    const spacingY = h / rows;
-    const radius = Math.min(spacingX, spacingY) * 0.4;
-    
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const cx = x + c * spacingX + spacingX / 2;
-        const cy = y + r * spacingY + spacingY / 2;
-        this.drawWireCap(cx, cy, radius, baseHeight + this.randomRange(60, 100));
-      }
-    }
-  }
-
-  private drawHeatSink(x: number, y: number, w: number, h: number, baseHeight: number) {
-    const isHorizontal = w > h;
-    const finSpacing = 8 * this.scale;
-    const finWidth = 4 * this.scale;
-    const finHeight = baseHeight + 80;
-    
-    this.ctx.fillStyle = `rgb(${Math.max(0, baseHeight - 20)}, ${Math.max(0, baseHeight - 20)}, ${Math.max(0, baseHeight - 20)})`;
-    this.ctx.fillRect(x, y, w, h);
-    
-    this.ctx.fillStyle = `rgb(${finHeight}, ${finHeight}, ${finHeight})`;
-    
-    if (isHorizontal) {
-      for (let px = x + finSpacing; px < x + w - finSpacing; px += finSpacing) {
-        this.ctx.fillRect(px, y + 2 * this.scale, finWidth, h - 4 * this.scale);
-      }
-    } else {
-      for (let py = y + finSpacing; py < y + h - finSpacing; py += finSpacing) {
-        this.ctx.fillRect(x + 2 * this.scale, py, w - 4 * this.scale, finWidth);
-      }
     }
   }
 
@@ -501,12 +520,12 @@ export class TextureGenerator {
     const cy = y + h / 2;
     const chipX = cx - chipW / 2;
     const chipY = cy - chipH / 2;
-    
+
     // Pins
     this.ctx.fillStyle = `rgb(${baseHeight + 60}, ${baseHeight + 60}, ${baseHeight + 60})`;
     const pinSpacing = 6 * this.scale;
     const pinWidth = 2 * this.scale;
-    
+
     if (w > h) {
       // Pins on top and bottom
       for (let px = chipX + pinSpacing; px < chipX + chipW - pinSpacing; px += pinSpacing) {
@@ -518,14 +537,14 @@ export class TextureGenerator {
         this.ctx.fillRect(x + w * 0.1, py, w * 0.8, pinWidth);
       }
     }
-    
+
     // Chip body
     const chipColor = baseHeight + 10;
     this.ctx.fillStyle = `rgb(${Math.max(0, chipColor - 20)}, ${Math.max(0, chipColor - 20)}, ${Math.max(0, chipColor - 20)})`;
     this.ctx.fillRect(chipX, chipY, chipW, chipH);
     this.ctx.fillStyle = `rgb(${chipColor}, ${chipColor}, ${chipColor})`;
     this.ctx.fillRect(chipX + 2 * this.scale, chipY + 2 * this.scale, chipW - 4 * this.scale, chipH - 4 * this.scale);
-    
+
     // Dimple
     this.ctx.fillStyle = `rgb(${Math.max(0, chipColor - 30)}, ${Math.max(0, chipColor - 30)}, ${Math.max(0, chipColor - 30)})`;
     this.ctx.beginPath();
@@ -540,14 +559,14 @@ export class TextureGenerator {
     this.ctx.lineWidth = 2 * this.scale;
     this.ctx.lineCap = 'round';
     this.ctx.lineJoin = 'round';
-    
+
     const numTraces = this.randomInt(2, 5);
     for (let i = 0; i < numTraces; i++) {
       const startX = x + this.randomRange(0.1, 0.9) * w;
       const startY = y + this.randomRange(0.1, 0.9) * h;
       const midX = x + this.randomRange(0.1, 0.9) * w;
       const endY = y + this.randomRange(0.1, 0.9) * h;
-      
+
       this.ctx.beginPath();
       this.ctx.moveTo(startX, startY);
       if (this.random() < 0.5) {
@@ -558,7 +577,7 @@ export class TextureGenerator {
         this.ctx.lineTo(midX, endY);
       }
       this.ctx.stroke();
-      
+
       // Vias
       this.ctx.beginPath();
       this.ctx.arc(startX, startY, 3 * this.scale, 0, Math.PI * 2);
@@ -569,7 +588,13 @@ export class TextureGenerator {
     }
   }
 
-  private drawSmoothWire(points: {x: number, y: number}[], radius: number, baseHeight: number, heightScale: number, materialType: 'wire' | 'pipe' = 'wire') {
+  private drawSmoothWire(
+    points: { x: number; y: number }[],
+    radius: number,
+    baseHeight: number,
+    heightScale: number,
+    materialType: 'wire' | 'pipe' = 'wire',
+  ) {
     if (points.length < 2) return;
 
     // 1. Draw shadow underneath (Height only)
@@ -599,7 +624,7 @@ export class TextureGenerator {
       if (r < 0.33) albedoColor = this.params.palette[2] || '#b87333';
       else if (r < 0.66) albedoColor = this.params.palette[3] || '#333333';
       else albedoColor = this.params.palette[4] || '#cc0000';
-      
+
       // If it's the dark wire (rubber), make it matte and non-metal
       if (albedoColor === (this.params.palette[3] || '#333333')) {
         roughness = 0.9;
@@ -637,29 +662,30 @@ export class TextureGenerator {
     for (let i = 1; i < points.length; i++) this.metalnessCtx.lineTo(points[i].x, points[i].y);
     this.metalnessCtx.stroke();
 
-
     const steps = 12;
 
     // 2. Draw segments with linear gradients (Height Only)
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
-      const p2 = points[i+1];
+      const p2 = points[i + 1];
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
-      const len = Math.sqrt(dx*dx + dy*dy);
+      const len = Math.sqrt(dx * dx + dy * dy);
       if (len === 0) continue;
 
       const nx = -dy / len;
       const ny = dx / len;
 
       const grad = this.ctx.createLinearGradient(
-        p1.x + nx * radius, p1.y + ny * radius,
-        p1.x - nx * radius, p1.y - ny * radius
+        p1.x + nx * radius,
+        p1.y + ny * radius,
+        p1.x - nx * radius,
+        p1.y - ny * radius,
       );
 
       for (let s = 0; s <= steps; s++) {
         const t = (s / steps) * 2 - 1;
-        const h = Math.sqrt(1 - t*t);
+        const h = Math.sqrt(1 - t * t);
         const val = Math.floor(Math.min(255, baseHeight + h * heightScale));
         grad.addColorStop(s / steps, `rgb(${val}, ${val}, ${val})`);
       }
@@ -680,7 +706,7 @@ export class TextureGenerator {
       const rGrad = this.ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
       for (let s = 0; s <= steps; s++) {
         const t = s / steps;
-        const h = Math.sqrt(1 - t*t);
+        const h = Math.sqrt(1 - t * t);
         const val = Math.floor(Math.min(255, baseHeight + h * heightScale));
         rGrad.addColorStop(t, `rgb(${val}, ${val}, ${val})`);
       }
@@ -703,7 +729,7 @@ export class TextureGenerator {
     const steps = 12;
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      const h = Math.sqrt(1 - t*t);
+      const h = Math.sqrt(1 - t * t);
       const val = Math.floor(Math.min(255, height + h * 20));
       rGrad.addColorStop(t, `rgb(${val}, ${val}, ${val})`);
     }
@@ -711,7 +737,7 @@ export class TextureGenerator {
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, Math.PI * 2);
     this.ctx.fill();
-    
+
     // Inner hole
     this.ctx.fillStyle = `rgb(${Math.max(0, height - 80)}, ${Math.max(0, height - 80)}, ${Math.max(0, height - 80)})`;
     this.ctx.beginPath();
@@ -722,7 +748,7 @@ export class TextureGenerator {
   private subdivide(x: number, y: number, w: number, h: number, depth: number) {
     const maxDepth = this.params.complexity;
     const minSize = 16 * this.scale;
-    
+
     // Determine current size category based on the largest dimension
     const maxDim = Math.max(w, h);
     let currentTier: 'large' | 'medium' | 'small' = 'small';
@@ -731,7 +757,7 @@ export class TextureGenerator {
     if (maxDim > 400 * this.scale) {
       // Too big, force split so we don't end up with one giant panel covering the whole map
       currentTier = 'large';
-      stopProb = 0; 
+      stopProb = 0;
     } else if (maxDim > 160 * this.scale) {
       currentTier = 'large';
       stopProb = this.params.largeDensity;
@@ -781,12 +807,12 @@ export class TextureGenerator {
     // Determine height (grayscale value)
     // Spread the heights out significantly so different tiers have distinct depths
     let baseHeight = 0;
-    if (tier === 'large') baseHeight = this.randomRange(100, 140);   // Lowest base hull
-    if (tier === 'medium') baseHeight = this.randomRange(150, 190);  // Mid-level plating
-    if (tier === 'small') baseHeight = this.randomRange(200, 250);   // Highest raised details
+    if (tier === 'large') baseHeight = this.randomRange(100, 140); // Lowest base hull
+    if (tier === 'medium') baseHeight = this.randomRange(150, 190); // Mid-level plating
+    if (tier === 'small') baseHeight = this.randomRange(200, 250); // Highest raised details
 
     const color = Math.floor(baseHeight);
-    
+
     // Determine corner style
     const cornerType: 'step' | 'chamfer' = this.random() < 0.5 ? 'step' : 'chamfer';
     const cornerSize = Math.floor(Math.min(w, h) * this.randomRange(0.1, 0.25));
@@ -795,26 +821,42 @@ export class TextureGenerator {
       hasCorners && this.random() < 0.5, // TL
       hasCorners && this.random() < 0.5, // TR
       hasCorners && this.random() < 0.5, // BR
-      hasCorners && this.random() < 0.5  // BL
+      hasCorners && this.random() < 0.5, // BL
     ];
 
     const bevel = (tier === 'large' ? 4 : tier === 'medium' ? 2 : 1) * this.scale;
-    
+
     // Outer shadow/bevel (darker)
     this.ctx.fillStyle = `rgb(${Math.max(0, color - 60)}, ${Math.max(0, color - 60)}, ${Math.max(0, color - 60)})`;
     this.drawPanelShape(x, y, w, h, hasCorners ? cornerSize : 0, corners, cornerType);
     this.ctx.fill();
-    
+
     // Inner main (lighter)
     this.ctx.fillStyle = `rgb(${color}, ${color}, ${color})`;
-    this.drawPanelShape(x + bevel, y + bevel, w - bevel * 2, h - bevel * 2, hasCorners ? Math.max(0, cornerSize - bevel) : 0, corners, cornerType);
+    this.drawPanelShape(
+      x + bevel,
+      y + bevel,
+      w - bevel * 2,
+      h - bevel * 2,
+      hasCorners ? Math.max(0, cornerSize - bevel) : 0,
+      corners,
+      cornerType,
+    );
     this.ctx.fill();
 
     const parentShape: PanelShape = { x, y, w, h, cornerSize: hasCorners ? cornerSize : 0, corners };
 
     // Clip to inner shape for cohesive sub-panels
     this.ctx.save();
-    this.drawPanelShape(x + bevel, y + bevel, w - bevel * 2, h - bevel * 2, hasCorners ? Math.max(0, cornerSize - bevel) : 0, corners, cornerType);
+    this.drawPanelShape(
+      x + bevel,
+      y + bevel,
+      w - bevel * 2,
+      h - bevel * 2,
+      hasCorners ? Math.max(0, cornerSize - bevel) : 0,
+      corners,
+      cornerType,
+    );
     this.ctx.clip();
 
     // Recursively draw sub-panels inside this shape
@@ -833,10 +875,19 @@ export class TextureGenerator {
 
   private intersectsCutCorner(dx: number, dy: number, dw: number, dh: number, parentShape?: PanelShape) {
     if (!parentShape || parentShape.cornerSize <= 0) return false;
-    
+
     const { x: px, y: py, w: pw, h: ph, cornerSize: cs, corners } = parentShape;
 
-    const checkOverlap = (r1x: number, r1y: number, r1w: number, r1h: number, r2x: number, r2y: number, r2w: number, r2h: number) => {
+    const checkOverlap = (
+      r1x: number,
+      r1y: number,
+      r1w: number,
+      r1h: number,
+      r2x: number,
+      r2y: number,
+      r2w: number,
+      r2h: number,
+    ) => {
       return r1x < r2x + r2w && r1x + r1w > r2x && r1y < r2y + r2h && r1y + r1h > r2y;
     };
 
@@ -848,7 +899,16 @@ export class TextureGenerator {
     return false;
   }
 
-  private drawSubPanels(x: number, y: number, w: number, h: number, baseColor: number, depth: number, tier: PanelTier, parentShape: PanelShape) {
+  private drawSubPanels(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    baseColor: number,
+    depth: number,
+    tier: PanelTier,
+    parentShape: PanelShape,
+  ) {
     const maxDepth = tier === 'large' ? 4 : tier === 'medium' ? 2 : 0;
     const minSize = 24 * this.scale;
 
@@ -859,15 +919,33 @@ export class TextureGenerator {
 
       if (isHorizontal) {
         this.drawSubPanels(x, y, w, split - lineThickness / 2, baseColor, depth + 1, tier, parentShape);
-        this.drawSubPanels(x, y + split + lineThickness / 2, w, h - split - lineThickness / 2, baseColor, depth + 1, tier, parentShape);
-        
+        this.drawSubPanels(
+          x,
+          y + split + lineThickness / 2,
+          w,
+          h - split - lineThickness / 2,
+          baseColor,
+          depth + 1,
+          tier,
+          parentShape,
+        );
+
         // Draw panel line (cut)
         this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`;
         this.ctx.fillRect(x, y + split - lineThickness / 2, w, lineThickness);
       } else {
         this.drawSubPanels(x, y, split - lineThickness / 2, h, baseColor, depth + 1, tier, parentShape);
-        this.drawSubPanels(x + split + lineThickness / 2, y, w - split - lineThickness / 2, h, baseColor, depth + 1, tier, parentShape);
-        
+        this.drawSubPanels(
+          x + split + lineThickness / 2,
+          y,
+          w - split - lineThickness / 2,
+          h,
+          baseColor,
+          depth + 1,
+          tier,
+          parentShape,
+        );
+
         // Draw panel line (cut)
         this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`;
         this.ctx.fillRect(x + split - lineThickness / 2, y, lineThickness, h);
@@ -888,12 +966,18 @@ export class TextureGenerator {
           const iy = y + insetMargin;
           const iw = w - insetMargin * 2;
           const ih = h - insetMargin * 2;
-          
+
           if (!this.intersectsCutCorner(ix, iy, iw, ih, parentShape)) {
             const insetColor = Math.max(0, subColor - 40);
             this.ctx.fillStyle = `rgb(${insetColor}, ${insetColor}, ${insetColor})`;
             this.ctx.fillRect(ix, iy, iw, ih);
-            this.drawDetail(ix + 4 * this.scale, iy + 4 * this.scale, iw - 8 * this.scale, ih - 8 * this.scale, insetColor);
+            this.drawDetail(
+              ix + 4 * this.scale,
+              iy + 4 * this.scale,
+              iw - 8 * this.scale,
+              ih - 8 * this.scale,
+              insetColor,
+            );
           }
         }
       } else if (r < 0.85) {
@@ -904,7 +988,7 @@ export class TextureGenerator {
           const dy = y + margin;
           const dw = w - margin * 2;
           const dh = h - margin * 2;
-          
+
           if (!this.intersectsCutCorner(dx, dy, dw, dh, parentShape)) {
             this.drawDetail(dx, dy, dw, dh, subColor);
           }
@@ -915,12 +999,15 @@ export class TextureGenerator {
 
   private drawEdgeNotches(x: number, y: number, w: number, h: number, baseColor: number, parentShape: PanelShape) {
     if (w < 64 * this.scale || h < 64 * this.scale || this.random() > 0.7) return;
-    
+
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 60)}, ${Math.max(0, baseColor - 60)}, ${Math.max(0, baseColor - 60)})`; // Deep cut
     const notchW = this.randomRange(12 * this.scale, 32 * this.scale);
     const notchH = this.randomRange(4 * this.scale, 8 * this.scale);
-    
-    let nx = 0, ny = 0, nw = 0, nh = 0;
+
+    let nx = 0,
+      ny = 0,
+      nw = 0,
+      nh = 0;
     if (this.random() < 0.5) {
       nx = x + this.randomRange(24 * this.scale, w - notchW - 24 * this.scale);
       nw = notchW;
@@ -958,9 +1045,17 @@ export class TextureGenerator {
     }
   }
 
-  private drawPanelShape(x: number, y: number, w: number, h: number, size: number, corners: PanelShape['corners'], type: 'step' | 'chamfer') {
+  private drawPanelShape(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    size: number,
+    corners: PanelShape['corners'],
+    type: 'step' | 'chamfer',
+  ) {
     this.ctx.beginPath();
-    
+
     // Top Left
     if (corners[0] && size > 0) {
       this.ctx.moveTo(x, y + size);
@@ -973,7 +1068,7 @@ export class TextureGenerator {
     } else {
       this.ctx.moveTo(x, y);
     }
-    
+
     // Top Right
     if (corners[1] && size > 0) {
       this.ctx.lineTo(x + w - size, y);
@@ -986,7 +1081,7 @@ export class TextureGenerator {
     } else {
       this.ctx.lineTo(x + w, y);
     }
-    
+
     // Bottom Right
     if (corners[2] && size > 0) {
       this.ctx.lineTo(x + w, y + h - size);
@@ -999,7 +1094,7 @@ export class TextureGenerator {
     } else {
       this.ctx.lineTo(x + w, y + h);
     }
-    
+
     // Bottom Left
     if (corners[3] && size > 0) {
       this.ctx.lineTo(x + size, y + h);
@@ -1012,18 +1107,18 @@ export class TextureGenerator {
     } else {
       this.ctx.lineTo(x, y + h);
     }
-    
+
     this.ctx.closePath();
   }
 
   private drawPerforatedGrid(x: number, y: number, w: number, h: number, baseColor: number) {
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 15)}, ${Math.max(0, baseColor - 15)}, ${Math.max(0, baseColor - 15)})`;
     this.ctx.fillRect(x, y, w, h);
-    
+
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`;
     const dotSize = Math.max(1, 2 * this.scale);
     const spacing = 6 * this.scale;
-    
+
     for (let py = y + spacing; py < y + h - spacing; py += spacing) {
       for (let px = x + spacing; px < x + w - spacing; px += spacing) {
         this.ctx.fillRect(px, py, dotSize, dotSize);
@@ -1033,23 +1128,23 @@ export class TextureGenerator {
 
   private drawConcentricCircles(cx: number, cy: number, radius: number, baseColor: number) {
     if (radius < 8 * this.scale) return;
-    
+
     const steps = this.randomInt(2, 4);
     const stepSize = radius / steps;
-    
+
     for (let i = 0; i < steps; i++) {
-      const r = radius - (i * stepSize);
+      const r = radius - i * stepSize;
       const isDark = i % 2 === 1;
-      
-      this.ctx.fillStyle = isDark 
+
+      this.ctx.fillStyle = isDark
         ? `rgb(${Math.max(0, baseColor - 30)}, ${Math.max(0, baseColor - 30)}, ${Math.max(0, baseColor - 30)})`
         : `rgb(${Math.min(255, baseColor + 10)}, ${Math.min(255, baseColor + 10)}, ${Math.min(255, baseColor + 10)})`;
-        
+
       this.ctx.beginPath();
       this.ctx.arc(cx, cy, r, 0, Math.PI * 2);
       this.ctx.fill();
     }
-    
+
     // Center hole
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 60)}, ${Math.max(0, baseColor - 60)}, ${Math.max(0, baseColor - 60)})`;
     this.ctx.beginPath();
@@ -1060,14 +1155,14 @@ export class TextureGenerator {
   private drawPillSlots(x: number, y: number, w: number, h: number, baseColor: number) {
     const isHorizontal = w > h;
     const slotCount = this.randomInt(2, 5);
-    
+
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 40)}, ${Math.max(0, baseColor - 40)}, ${Math.max(0, baseColor - 40)})`;
-    
+
     if (isHorizontal) {
       const slotW = (w - (slotCount + 1) * 8 * this.scale) / slotCount;
       const slotH = h * 0.6;
       const sy = y + (h - slotH) / 2;
-      
+
       if (slotW > 4 * this.scale) {
         for (let i = 0; i < slotCount; i++) {
           const sx = x + 8 * this.scale + i * (slotW + 8 * this.scale);
@@ -1078,7 +1173,7 @@ export class TextureGenerator {
       const slotH = (h - (slotCount + 1) * 8 * this.scale) / slotCount;
       const slotW = w * 0.6;
       const sx = x + (w - slotW) / 2;
-      
+
       if (slotH > 4 * this.scale) {
         for (let i = 0; i < slotCount; i++) {
           const sy = y + 8 * this.scale + i * (slotH + 8 * this.scale);
@@ -1092,18 +1187,18 @@ export class TextureGenerator {
     if (w < 16 * this.scale || h < 16 * this.scale) return;
     const nodeSize = Math.min(w, h) * 0.3;
     const count = this.randomInt(1, 3);
-    
+
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 30)}, ${Math.max(0, baseColor - 30)}, ${Math.max(0, baseColor - 30)})`;
-    
+
     for (let i = 0; i < count; i++) {
       const nx = x + this.randomRange(0, w - nodeSize);
       const ny = y + this.randomRange(0, h - nodeSize);
-      
+
       if (this.random() < 0.5) {
         this.ctx.fillRect(nx, ny, nodeSize, nodeSize);
       } else {
         this.ctx.beginPath();
-        this.ctx.arc(nx + nodeSize/2, ny + nodeSize/2, nodeSize/2, 0, Math.PI * 2);
+        this.ctx.arc(nx + nodeSize / 2, ny + nodeSize / 2, nodeSize / 2, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
@@ -1113,12 +1208,12 @@ export class TextureGenerator {
     const isHorizontal = w > h;
     const ventSpacing = Math.max(4 * this.scale, Math.min(w, h) / 8);
     const ventWidth = Math.max(2 * this.scale, ventSpacing * 0.6);
-    
+
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 30)}, ${Math.max(0, baseColor - 30)}, ${Math.max(0, baseColor - 30)})`;
     this.ctx.fillRect(x, y, w, h); // Dark background for vents
 
     this.ctx.fillStyle = `rgb(${Math.min(255, baseColor + 20)}, ${Math.min(255, baseColor + 20)}, ${Math.min(255, baseColor + 20)})`;
-    
+
     if (isHorizontal) {
       for (let i = x + ventSpacing; i < x + w - ventSpacing; i += ventSpacing) {
         this.ctx.fillRect(i, y + 4 * this.scale, ventWidth, h - 8 * this.scale);
@@ -1134,28 +1229,43 @@ export class TextureGenerator {
     // Draw a cylindrical pipe with joints
     const isHorizontal = w > h;
     const pipeRadius = Math.min(w, h) / 4;
-    
+
     if (pipeRadius < 2 * this.scale) return;
 
     const cx = x + w / 2;
     const cy = y + h / 2;
 
     // Pipe body
-    let grad;
+    let grad: CanvasGradient;
     if (isHorizontal) {
       grad = this.ctx.createLinearGradient(0, cy - pipeRadius, 0, cy + pipeRadius);
     } else {
       grad = this.ctx.createLinearGradient(cx - pipeRadius, 0, cx + pipeRadius, 0);
     }
-    
-    grad.addColorStop(0, `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`);
-    grad.addColorStop(0.2, `rgb(${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)})`);
-    grad.addColorStop(0.5, `rgb(${Math.min(255, baseColor + 30)}, ${Math.min(255, baseColor + 30)}, ${Math.min(255, baseColor + 30)})`);
-    grad.addColorStop(0.8, `rgb(${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)})`);
-    grad.addColorStop(1, `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`);
+
+    grad.addColorStop(
+      0,
+      `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`,
+    );
+    grad.addColorStop(
+      0.2,
+      `rgb(${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)})`,
+    );
+    grad.addColorStop(
+      0.5,
+      `rgb(${Math.min(255, baseColor + 30)}, ${Math.min(255, baseColor + 30)}, ${Math.min(255, baseColor + 30)})`,
+    );
+    grad.addColorStop(
+      0.8,
+      `rgb(${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)}, ${Math.max(0, baseColor - 10)})`,
+    );
+    grad.addColorStop(
+      1,
+      `rgb(${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)}, ${Math.max(0, baseColor - 50)})`,
+    );
 
     this.ctx.fillStyle = grad;
-    
+
     if (isHorizontal) {
       this.ctx.fillRect(x, cy - pipeRadius, w, pipeRadius * 2);
     } else {
@@ -1181,23 +1291,26 @@ export class TextureGenerator {
     if (w < 16 * this.scale || h < 16 * this.scale) return;
 
     this.ctx.fillStyle = `rgb(${Math.min(255, baseColor + 40)}, ${Math.min(255, baseColor + 40)}, ${Math.min(255, baseColor + 40)})`;
-    
+
     const positions = [
       [x + 4 * this.scale, y + 4 * this.scale],
       [x + w - 4 * this.scale, y + 4 * this.scale],
       [x + 4 * this.scale, y + h - 4 * this.scale],
-      [x + w - 4 * this.scale, y + h - 4 * this.scale]
+      [x + w - 4 * this.scale, y + h - 4 * this.scale],
     ];
 
     for (const [bx, by] of positions) {
-      if (parentShape && this.intersectsCutCorner(bx - boltRadius, by - boltRadius, boltRadius * 2, boltRadius * 2, parentShape)) {
+      if (
+        parentShape &&
+        this.intersectsCutCorner(bx - boltRadius, by - boltRadius, boltRadius * 2, boltRadius * 2, parentShape)
+      ) {
         continue;
       }
-      
+
       this.ctx.beginPath();
       this.ctx.arc(bx, by, boltRadius, 0, Math.PI * 2);
       this.ctx.fill();
-      
+
       // Bolt shadow/hole
       this.ctx.fillStyle = `rgb(20, 20, 20)`;
       this.ctx.beginPath();
