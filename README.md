@@ -36,7 +36,3 @@ The project site URL is:
 `https://dovvnloading.github.io/Greebler/`
 
 GitHub Free requires the repository to be public. Private-repository Pages requires GitHub Pro, Team, or Enterprise.
-
-## Plan
-
-The dependency-ordered implementation plan lives in [ROADMAP.md](ROADMAP.md). It is maintained batch by batch as the engine evolves.
