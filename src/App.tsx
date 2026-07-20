@@ -66,7 +66,7 @@ export default function App() {
     }
   }, [params.palette, handleGenerate]);
 
-  const handleParamChange = (key: keyof GenerationParams, value: any) => {
+  const handleParamChange = <K extends keyof GenerationParams>(key: K, value: GenerationParams[K]) => {
     setParams((prev) => ({ ...prev, [key]: value }));
   };
 

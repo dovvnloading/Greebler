@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
-export const CustomSelect = ({ value, options, onChange, placeholder }: { value: string | number, options: {label: string, value: string | number}[], onChange: (v: any) => void, placeholder?: string }) => {
+export interface SelectOption<T extends string | number> {
+  label: string;
+  value: T;
+}
+
+interface CustomSelectProps<T extends string | number> {
+  value: T;
+  options: SelectOption<T>[];
+  onChange: (value: T) => void;
+  placeholder?: string;
+}
+
+export const CustomSelect = <T extends string | number>({ value, options, onChange, placeholder }: CustomSelectProps<T>) => {
   const [isOpen, setIsOpen] = useState(false);
   const selectedOption = options.find(o => o.value === value);
   
