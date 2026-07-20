@@ -12,6 +12,17 @@ export interface GenerationParams {
   palette: string[];
 }
 
+type PanelTier = 'large' | 'medium' | 'small';
+
+interface PanelShape {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  cornerSize: number;
+  corners: [boolean, boolean, boolean, boolean];
+}
+
 export class TextureGenerator {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -780,7 +791,7 @@ export class TextureGenerator {
     const cornerType: 'step' | 'chamfer' = this.random() < 0.5 ? 'step' : 'chamfer';
     const cornerSize = Math.floor(Math.min(w, h) * this.randomRange(0.1, 0.25));
     const hasCorners = this.random() < 0.6 && w > 32 * this.scale && h > 32 * this.scale;
-    const corners = [
+    const corners: PanelShape['corners'] = [
       hasCorners && this.random() < 0.5, // TL
       hasCorners && this.random() < 0.5, // TR
       hasCorners && this.random() < 0.5, // BR
@@ -799,7 +810,7 @@ export class TextureGenerator {
     this.drawPanelShape(x + bevel, y + bevel, w - bevel * 2, h - bevel * 2, hasCorners ? Math.max(0, cornerSize - bevel) : 0, corners, cornerType);
     this.ctx.fill();
 
-    const parentShape = { x, y, w, h, cornerSize: hasCorners ? cornerSize : 0, corners };
+    const parentShape: PanelShape = { x, y, w, h, cornerSize: hasCorners ? cornerSize : 0, corners };
 
     // Clip to inner shape for cohesive sub-panels
     this.ctx.save();
@@ -820,7 +831,7 @@ export class TextureGenerator {
     this.ctx.restore();
   }
 
-  private intersectsCutCorner(dx: number, dy: number, dw: number, dh: number, parentShape: any) {
+  private intersectsCutCorner(dx: number, dy: number, dw: number, dh: number, parentShape?: PanelShape) {
     if (!parentShape || parentShape.cornerSize <= 0) return false;
     
     const { x: px, y: py, w: pw, h: ph, cornerSize: cs, corners } = parentShape;
@@ -837,7 +848,7 @@ export class TextureGenerator {
     return false;
   }
 
-  private drawSubPanels(x: number, y: number, w: number, h: number, baseColor: number, depth: number, tier: string, parentShape: any) {
+  private drawSubPanels(x: number, y: number, w: number, h: number, baseColor: number, depth: number, tier: PanelTier, parentShape: PanelShape) {
     const maxDepth = tier === 'large' ? 4 : tier === 'medium' ? 2 : 0;
     const minSize = 24 * this.scale;
 
@@ -902,7 +913,7 @@ export class TextureGenerator {
     }
   }
 
-  private drawEdgeNotches(x: number, y: number, w: number, h: number, baseColor: number, parentShape: any) {
+  private drawEdgeNotches(x: number, y: number, w: number, h: number, baseColor: number, parentShape: PanelShape) {
     if (w < 64 * this.scale || h < 64 * this.scale || this.random() > 0.7) return;
     
     this.ctx.fillStyle = `rgb(${Math.max(0, baseColor - 60)}, ${Math.max(0, baseColor - 60)}, ${Math.max(0, baseColor - 60)})`; // Deep cut
@@ -947,7 +958,7 @@ export class TextureGenerator {
     }
   }
 
-  private drawPanelShape(x: number, y: number, w: number, h: number, size: number, corners: boolean[], type: 'step' | 'chamfer') {
+  private drawPanelShape(x: number, y: number, w: number, h: number, size: number, corners: PanelShape['corners'], type: 'step' | 'chamfer') {
     this.ctx.beginPath();
     
     // Top Left
@@ -1165,7 +1176,7 @@ export class TextureGenerator {
     }
   }
 
-  private drawBolts(x: number, y: number, w: number, h: number, baseColor: number, parentShape?: any) {
+  private drawBolts(x: number, y: number, w: number, h: number, baseColor: number, parentShape?: PanelShape) {
     const boltRadius = 2 * this.scale;
     if (w < 16 * this.scale || h < 16 * this.scale) return;
 
