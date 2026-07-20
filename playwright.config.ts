@@ -7,6 +7,9 @@ export default defineConfig({
     timeout: 15_000,
   },
   fullyParallel: true,
+  // Chromium uses software WebGL in CI; serializing tests avoids GPU
+  // contention while keeping each test independently isolated.
+  workers: 1,
   reporter: process.env.CI ? 'dot' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:3000',
