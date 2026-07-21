@@ -1,3 +1,11 @@
+import {
+  generationParamsFromRecipe,
+  getGenerationRecipeId,
+  normalizeGenerationRecipe,
+  type GenerationParams,
+  type GenerationRecipe,
+} from './recipes';
+
 function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) {
@@ -6,17 +14,7 @@ function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
-export interface GenerationParams {
-  style: 'tech' | 'electrical';
-  resolution: number;
-  seed: number;
-  largeDensity: number;
-  mediumDensity: number;
-  smallDensity: number;
-  gapSize: number;
-  complexity: number;
-  palette: string[];
-}
+export type { GenerationParams, GenerationRecipe } from './recipes';
 
 type PanelTier = 'large' | 'medium' | 'small';
 
@@ -40,11 +38,14 @@ export class TextureGenerator {
   private roughnessCtx: CanvasRenderingContext2D;
   private metalnessCanvas: HTMLCanvasElement;
   private metalnessCtx: CanvasRenderingContext2D;
+  private recipe: GenerationRecipe;
   private params: GenerationParams;
   private randomSeed: number;
   private scale: number;
 
-  constructor(params: GenerationParams) {
+  constructor(input: GenerationParams | GenerationRecipe) {
+    this.recipe = normalizeGenerationRecipe(input);
+    const params = generationParamsFromRecipe(this.recipe);
     this.params = params;
     this.scale = params.resolution / 1024;
 
@@ -81,6 +82,14 @@ export class TextureGenerator {
     this.metalnessCtx = getCanvasContext(this.metalnessCanvas);
 
     this.randomSeed = params.seed;
+  }
+
+  public getRecipe(): GenerationRecipe {
+    return normalizeGenerationRecipe(this.recipe);
+  }
+
+  public getRecipeId(): string {
+    return getGenerationRecipeId(this.recipe);
   }
 
   private random() {
