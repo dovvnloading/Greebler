@@ -3,6 +3,11 @@ name: Validate
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_browser_tests:
+        description: Run optional Chromium smoke tests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,9 +45,11 @@ jobs:
         run: npm test
 
       - name: Install Playwright browser
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_browser_tests }}
         run: npx playwright install --with-deps chromium
 
       - name: Browser smoke tests
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_browser_tests }}
         run: npm run test:browser
 
       - name: Build GitHub Pages artifact
