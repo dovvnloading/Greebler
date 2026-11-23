@@ -103,9 +103,8 @@ test('phone inspectors keep focus in the open sheet and return to the document',
     mimeType: 'application/json',
     buffer: Buffer.from('{"version":-1}'),
   });
-  await expect(
-    page.getByRole('alert').or(page.getByRole('status')).filter({ hasText: 'Invalid material recipe' }),
-  ).toBeVisible();
+  await expect(shelf.getByRole('alert')).toContainText('Invalid material recipe');
+  await expect(shelf.getByRole('alert')).toBeVisible();
 });
 
 test('saves a named material and recalls its authored properties from the library after reload', async ({ page }) => {

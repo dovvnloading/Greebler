@@ -447,7 +447,7 @@ export default function App() {
           </>
         )}
       </div>
-      <footer className="status-line">
+      <footer className="status-line" aria-hidden={modal || layout.drawer ? true : undefined}>
         <div className="session-status" role={statusError ? 'alert' : 'status'}>
           <i className={statusError ? 'state-error' : progress ? 'state-working' : 'state-ready'} />
           {statusError || (progress ? progress.stage : notice || 'Ready')}
