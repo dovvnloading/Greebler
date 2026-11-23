@@ -127,6 +127,22 @@ describe('adaptive displacement triangulation', () => {
     },
   );
 
+  it('keeps the cube face flat beyond its narrow rim even for a one-texel height map', () => {
+    const mesh = buildAdaptiveMesh(
+      field(1, () => 65535),
+      1,
+      'cube',
+    );
+    const innerRim = [];
+    for (let i = 0; i < mesh.uv.length; i += 2) {
+      const u = mesh.uv[i];
+      const v = mesh.uv[i + 1];
+      if (v === 0.5 && u > 0 && u < 0.04) innerRim.push(u);
+    }
+    expect(innerRim.some((u) => u < 0.02)).toBe(true);
+    expect(innerRim.some((u) => u >= 0.02)).toBe(true);
+  });
+
   it('retains pole curvature and rounded plate perimeters under constant displacement', () => {
     const flat = field(4, () => 0);
     expect(buildAdaptiveMesh(flat, 4, 'sphere').indices.length / 3).toBeGreaterThanOrEqual(2 * 64 ** 2);

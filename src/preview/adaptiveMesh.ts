@@ -77,7 +77,8 @@ export function buildAdaptiveMesh(pixels: Uint8Array, size: number, shape: Swatc
     throw new Error('Invalid packed height field for adaptive displacement.');
   // The half-texel lattice includes source texel centers on power-of-two bakes; sampling
   // corners alone would average away a one-texel alternating ridge throughout the tile.
-  const minimum = shape === 'sphere' ? 64 : shape === 'plate' ? 128 : 2;
+  // Rounded rims and poles still have geometry when the source is a single constant texel.
+  const minimum = shape === 'plane' ? 2 : shape === 'sphere' ? 64 : 128;
   const n = 2 ** Math.ceil(Math.log2(Math.max(size * 2, minimum)));
   const stride = n + 1;
   const heights = surfaceHeights(pixels, size, n, shape);
