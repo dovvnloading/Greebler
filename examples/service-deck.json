@@ -2,6 +2,7 @@
   "version": 2,
   "params": {
     "style": "tech",
+    "panelPattern": "mixed",
     "resolution": 2048,
     "seed": 12345,
     "largeDensity": 0.8,

@@ -1,11 +1,11 @@
-import { type GenerationParams, hardwarePatterns, type HardwarePattern, type PanelComponent } from '../recipes';
+import type { GenerationParams, PanelComponent } from '../recipes';
 import { drawDisplacementBay } from './displacementLayout';
 import { coating } from './panelCoating';
 import { cassette, sensor, waveguide } from './instrumentPatterns';
 import { coupling, iris, truss } from './mechanicalPatterns';
 import { board, bolt, copper, enamel, gunmetal, insulator, pipe, rubber, steel } from './patternHardware';
 import { exchanger, filter, harness } from './servicePatterns';
-import { hash, type PanelSlot, planStudioPanels, sample } from './surfaceAssembly';
+import { hash, type PanelSlot, planStudioPanels, planStudioBay, sample } from './surfaceAssembly';
 import { type Finish, type StudioLayout, SurfacePen, TILE } from './surfacePrimitives';
 
 export { paintStudioLayout, type StudioContexts, type StudioLayout } from './surfacePrimitives';
@@ -319,7 +319,10 @@ type PatternDrawer = (
   face: Finish,
 ) => void;
 
-const hardware: Record<HardwarePattern, PatternDrawer> = {
+const hardware: Record<Exclude<PanelComponent, 'plain'>, PatternDrawer> = {
+  radiator,
+  terminal: terminalBlock,
+  controller: circuit,
   iris,
   coupling,
   truss,
@@ -331,17 +334,13 @@ const hardware: Record<HardwarePattern, PatternDrawer> = {
   sensor,
 };
 
-function panelPattern(pattern: GenerationParams['panelPattern'], detail: number) {
-  return pattern === 'mixed' ? hardwarePatterns[Math.floor(sample(detail, 51) * hardwarePatterns.length)] : pattern;
-}
-
 function drawPanel(
   pen: SurfacePen,
   w: number,
   h: number,
   params: GenerationParams,
   seed: number,
-  override?: PanelComponent,
+  component?: PanelComponent,
 ) {
   const inset = 1.2 + params.gapSize * 0.42;
   w -= inset * 2;
@@ -374,7 +373,6 @@ function drawPanel(
   }
 
   const hasDetail = sample(detail, 9) < params.mediumDensity;
-  const component = override ?? (hasDetail ? panelPattern(params.panelPattern, detail) : undefined);
   const mx = component ? Math.min(w * 0.12, 19) : 12 + Math.min(11, w * 0.04);
   const my = Math.min(20, h * 0.17);
   const iw = w - mx * 2;
@@ -382,10 +380,7 @@ function drawPanel(
   if (component) {
     // Fit the chosen assembly within the existing hatch and leave its mounting rim intact.
     const fitted = pen.frame(mx, my);
-    if (component === 'radiator') radiator(fitted, iw, ih, z, fine);
-    else if (component === 'terminal') terminalBlock(fitted, iw, ih, z, fine);
-    else if (component === 'controller') circuit(fitted, iw, ih, z, fine);
-    else if (component !== 'plain') hardware[component](fitted, iw, ih, z, fine, detail, face);
+    if (component !== 'plain') hardware[component](fitted, iw, ih, z, fine, detail, face);
   } else if (iw < 40 || ih < 13) {
     return;
   } else if (hasDetail) {
@@ -430,21 +425,12 @@ function fitBay(pen: SurfacePen, slot: PanelSlot, params: GenerationParams) {
   const span = Math.max(w, h);
   const splitAlongX = w > h;
   const frame = pen.frame(0, 0, !splitAlongX);
-  const component = params.panelOverrides?.[slot.id];
-  if (params.style === 'displacement') {
-    const detail = params.detailSeed === undefined ? seed : hash(seed, params.detailSeed);
-    const fitted =
-      component ?? (sample(seed, 9) < params.mediumDensity ? panelPattern(params.panelPattern, detail) : undefined);
-    if (fitted) {
-      drawPanel(frame, span, Math.min(w, h), params, seed, fitted);
-    } else {
-      drawDisplacementBay(pen, w, h, params, seed);
-    }
-    return;
-  }
-  if (component || sample(seed, 19) <= params.largeDensity) {
-    drawPanel(frame, span, Math.min(w, h), params, seed, component);
-  } else if (sample(seed, 20) < params.mediumDensity) {
+  const bay = planStudioBay(params, seed, params.panelOverrides?.[slot.id]);
+  if (bay.kind === 'displacement') {
+    drawDisplacementBay(pen, w, h, params, seed);
+  } else if (bay.kind === 'panel') {
+    drawPanel(frame, span, Math.min(w, h), params, seed, bay.component);
+  } else if (bay.kind === 'open') {
     // An open service bay exposes smaller backplane modules instead of a solid hatch.
     const depth = Math.min(w, h);
     const margin = Math.min(13, depth * 0.12);
@@ -453,9 +439,16 @@ function fitBay(pen: SurfacePen, slot: PanelSlot, params: GenerationParams) {
     const innerW = span - margin * 4;
     const innerH = depth - margin * 4;
     const detail = params.detailSeed === undefined ? seed : hash(seed, params.detailSeed);
-    const pattern = panelPattern(params.panelPattern, detail);
-    if (pattern)
-      hardware[pattern](inner, innerW, innerH, 94, params.smallDensity, detail, coating(params.palette, 0.42, 115));
+    if (bay.component)
+      hardware[bay.component](
+        inner,
+        innerW,
+        innerH,
+        94,
+        params.smallDensity,
+        detail,
+        coating(params.palette, 0.42, 115),
+      );
     else if (params.style === 'electrical') circuit(inner, innerW, innerH, 65, params.smallDensity);
     else radiator(inner, innerW, innerH, 66, params.smallDensity);
   } else {

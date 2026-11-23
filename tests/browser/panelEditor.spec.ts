@@ -20,7 +20,7 @@ async function exportedFiles(page: Page, recipeId: string) {
   return unzipSync(await readFile(path));
 }
 
-test('fits both copies of a wrapped factory iris panel, exports its local actuator and restores the preset', async ({
+test('fits both copies of a wrapped mechanical bay, exports its local sensor and restores the preset', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -31,7 +31,7 @@ test('fits both copies of a wrapped factory iris panel, exports its local actuat
       },
     });
   });
-  const preset = JSON.parse(await readFile(new URL('../../examples/iris.json', import.meta.url), 'utf8'));
+  const preset = JSON.parse(await readFile(new URL('../../examples/mechanical-bay.json', import.meta.url), 'utf8'));
   const size = 512;
   const recipe = parseGenerationRecipe(JSON.stringify({ ...preset, params: { ...preset.params, resolution: size } }));
   const slot = planStudioPanels(recipe.params)
@@ -39,8 +39,8 @@ test('fits both copies of a wrapped factory iris panel, exports its local actuat
     .sort((a, b) => b.w * b.h - a.w * a.h)[0];
   expect(slot).toBeDefined();
   await page.goto('/');
-  await page.getByRole('button', { name: 'Iris shutter', exact: true }).click();
-  await expect(page.getByLabel('Panel pattern', { exact: true })).toHaveValue('iris');
+  await page.getByRole('button', { name: 'Mechanical bay', exact: true }).click();
+  await expect(page.getByLabel('Panel pattern', { exact: true })).toHaveValue('mechanical');
   await page.getByLabel('Bake resolution').selectOption(String(size));
   const before = await exportedFiles(page, getGenerationRecipeId(recipe));
   await page.getByText('Panel components', { exact: true }).click();
@@ -51,9 +51,9 @@ test('fits both copies of a wrapped factory iris panel, exports its local actuat
   await fragments.last().click();
   await expect(page.getByLabel('Panel ID')).toHaveValue(slot.id);
   await expect(fragments.first()).toHaveAttribute('aria-pressed', 'true');
-  await page.getByLabel('Fitted component').selectOption('coupling');
+  await page.getByLabel('Fitted component').selectOption('sensor');
   const changed = parseGenerationRecipe(
-    JSON.stringify({ ...recipe, params: { ...recipe.params, panelOverrides: { [slot.id]: 'coupling' } } }),
+    JSON.stringify({ ...recipe, params: { ...recipe.params, panelOverrides: { [slot.id]: 'sensor' } } }),
   );
   const after = await exportedFiles(page, getGenerationRecipeId(changed));
   expect(JSON.parse(new TextDecoder().decode(after['recipe.json']))).toEqual(changed);
@@ -88,7 +88,7 @@ test('fits both copies of a wrapped factory iris panel, exports its local actuat
   await page.keyboard.press('Escape');
   await expect(page.getByLabel('Fitted component')).toHaveValue('');
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect(page.getByLabel('Fitted component')).toHaveValue('coupling');
+  await expect(page.getByLabel('Fitted component')).toHaveValue('sensor');
   await page.getByRole('button', { name: 'Reset all panels', exact: true }).click();
   const reset = await exportedFiles(page, getGenerationRecipeId(recipe));
   for (const name of Object.keys(before).filter((name) => name.startsWith('maps/'))) {

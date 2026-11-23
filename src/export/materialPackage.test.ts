@@ -56,6 +56,7 @@ it('builds a deterministic archive with lossless PNGs and the exact recipe', asy
   const tangentX = raw.readFloatLE(tangent);
   const sign = raw.readFloatLE(tangent + 12);
   expect(normalZ * tangentX * sign).toBe(1);
+  expect(swatch.extensionsUsed).toBeUndefined();
   const material = swatch.materials[0];
   const path = (index: number) => swatch.images[swatch.textures[index].source].uri;
   expect(path(material.normalTexture.index)).toBe(manifest.maps.normal.file);
@@ -100,4 +101,17 @@ it('preserves arbitrary source dimensions when choosing HDRP texture import limi
   expect(engineProfile('unity-hdrp', 1).importSettings.maxTextureSize).toBe(32);
   expect(engineProfile('unity-hdrp', 2048).importSettings.maxTextureSize).toBe(2048);
   expect(engineProfile('unity-hdrp', 3000).importSettings).toMatchObject({ maxTextureSize: 4096, npotScale: 'None' });
+});
+
+it.each([0, 0.85, 1])('exports authored dielectric specular level %f with its material', async (specularIntensity) => {
+  const authored = { ...recipe, params: { ...recipe.params, specularIntensity } };
+  const bundle = await buildMaterialPackage({ recipe: authored, blobs });
+  const files = unzipSync(new Uint8Array(await bundle.arrayBuffer()));
+  const gltf = parse(files['material.gltf']);
+  expect(gltf.extensionsUsed).toContain('KHR_materials_specular');
+  expect(gltf.materials[0].extensions.KHR_materials_specular.specularFactor).toBe(specularIntensity);
+  expect(parse(files['manifest.json']).specularIntensity).toBe(specularIntensity);
+  expect(engineProfile('unreal', 1, specularIntensity).importSettings).toMatchObject({
+    specular: specularIntensity * 0.5,
+  });
 });

@@ -11,6 +11,8 @@ import {
   generationParamsFromRecipe,
   getGenerationRecipeId,
   hardwarePatterns,
+  hardwareMixes,
+  isHardwareMix,
   normalizeGenerationRecipe,
   parseGenerationRecipe,
   serializeGenerationRecipe,
@@ -109,6 +111,9 @@ it.each([
   { normalStrength: -1 },
   { aoStrength: 4 },
   { wear: 2 },
+  { roughness: -0.01 },
+  { metalness: 1.1 },
+  { specularIntensity: '1' },
   { complexity: 99 },
   { seed: 1.2 },
   { detailSeed: 1.2 },
@@ -117,6 +122,20 @@ it.each([
   expect(() =>
     parseGenerationRecipe(JSON.stringify({ version: 2, params: { ...createParams(), ...change } })),
   ).toThrow();
+});
+
+it('round-trips authored PBR values, including zero, without adding them to old recipes', () => {
+  const params = createParams();
+  const original = createGenerationRecipe(params);
+  for (const field of ['metalness', 'roughness', 'specularIntensity'] as const) {
+    expect(serializeGenerationRecipe(original)).not.toContain(field);
+    for (const value of [0, 0.45, 1]) {
+      const edited = createGenerationRecipe({ ...params, [field]: value });
+      expect(parseGenerationRecipe(serializeGenerationRecipe(edited)).params[field]).toBe(value);
+      expect(getGenerationRecipeId(edited)).not.toBe(getGenerationRecipeId(original));
+      expect(convertRecipeVersion(edited, 1)).toEqual(createGenerationRecipe(params, 1));
+    }
+  }
 });
 
 it('canonicalizes panel overrides by stable slot ID and removes empty edits from recipe identity', () => {
@@ -153,8 +172,9 @@ it('records formed relief as an explicit recipe input while preserving the origi
 it.each([
   ['service deck', serviceDeck, 'g2-a30bfe08'],
   ['relay board', relayBoard, 'g2-0b5b5251'],
-] as const)('retains the shipped %s recipe identity', (_name, example, id) => {
-  const recipe = parseGenerationRecipe(JSON.stringify(example));
+] as const)('retains the original %s identity for recipes saved before mixes', (_name, example, id) => {
+  const params = { ...example.params, panelPattern: undefined };
+  const recipe = parseGenerationRecipe(JSON.stringify({ version: example.version, params }));
   expect(getGenerationRecipeId(recipe)).toBe(id);
   expect(serializeGenerationRecipe(recipe)).not.toContain('panelPattern');
 });
@@ -162,8 +182,8 @@ it.each([
 it('round-trips every hardware family and local fitting, including mixed hardware', () => {
   const params = createParams();
   const ids = new Set<string>();
-  for (const panelPattern of [...hardwarePatterns, 'mixed'] as const) {
-    const overrides = { A01: panelPattern === 'mixed' ? 'truss' : panelPattern } as const;
+  for (const panelPattern of [...hardwarePatterns, ...Object.keys(hardwareMixes).filter(isHardwareMix)]) {
+    const overrides = { A01: isHardwareMix(panelPattern) ? 'truss' : panelPattern } as const;
     const recipe = createGenerationRecipe({ ...params, panelPattern, panelOverrides: overrides });
     const restored = parseGenerationRecipe(serializeGenerationRecipe(recipe));
     expect(restored.params.panelPattern).toBe(panelPattern);
@@ -173,7 +193,7 @@ it('round-trips every hardware family and local fitting, including mixed hardwar
     ids.add(getGenerationRecipeId(createGenerationRecipe({ ...params, panelPattern })));
   }
   ids.add(getGenerationRecipeId(createGenerationRecipe(params)));
-  expect(ids.size).toBe(hardwarePatterns.length + 2);
+  expect(ids.size).toBe(hardwarePatterns.length + Object.keys(hardwareMixes).length + 1);
 });
 
 it.each([
@@ -181,6 +201,8 @@ it.each([
   { panelPattern: 'plain' },
   { panelPattern: null },
   { panelOverrides: { A01: 'mixed' } },
+  { panelOverrides: { A01: 'thermal' } },
+  { panelPattern: 'toString' },
 ])('rejects unsupported global or fitted hardware choices', (change) => {
   expect(() =>
     parseGenerationRecipe(JSON.stringify({ version: 2, params: { ...createParams(), ...change } })),

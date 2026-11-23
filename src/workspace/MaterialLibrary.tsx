@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { componentLabels, type GenerationStyle } from '../recipes';
+import { componentLabels, type GenerationStyle, hardwareMixes, isHardwareMix, mixLabels } from '../recipes';
 import { Dialog } from './Dialog';
 import { factoryMaterials, type LibraryMaterial } from './materialLibrary';
 
@@ -65,8 +65,11 @@ export function MaterialLibrary({
   const query = filter.trim().toLowerCase();
   const matches = ({ name, recipe }: LibraryMaterial) => {
     const pattern = recipe.params.panelPattern;
-    const hardware = pattern === 'mixed' ? 'Mixed hardware' : pattern ? `${pattern} ${componentLabels[pattern]}` : '';
-    return `${name} ${recipe.params.style} ${hardware}`.toLowerCase().includes(query);
+    const mix = isHardwareMix(pattern);
+    const families = mix ? hardwareMixes[pattern] : pattern ? [pattern] : [];
+    const terms = [name, recipe.params.style, mix ? mixLabels[pattern] : ''];
+    for (const family of families) terms.push(family, componentLabels[family]);
+    return terms.join(' ').toLowerCase().includes(query);
   };
   const presets = factoryMaterials.filter(matches);
   const collection = saved.filter(matches);

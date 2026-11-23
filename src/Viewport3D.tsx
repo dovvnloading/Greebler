@@ -23,7 +23,7 @@ import { renderStill } from './preview/renderStill';
 import { useAdaptiveMesh } from './preview/useAdaptiveMesh';
 import { createAdaptiveSwatchGeometry, createSwatchGeometry, type SwatchShape } from './preview/swatchGeometry';
 import { createReliefMaterial, type Shading } from './preview/reliefMaterial';
-import { loadSwatchTextures, type SwatchTextures } from './preview/swatchTextures';
+import { loadSwatchTextures, swatchHeightKey, type SwatchTextures } from './preview/swatchTextures';
 import { StudioLights } from './preview/StudioLights';
 
 const axes = ['x', 'y', 'z'] as const;
@@ -68,7 +68,7 @@ function useTextures(material: CompletedMaterial, onError: SceneProps['onError']
   useEffect(() => {
     const job = new AbortController();
     onError('');
-    loadSwatchTextures(material, gl.capabilities.getMaxAnisotropy(), job.signal)
+    loadSwatchTextures(material, gl.capabilities.getMaxAnisotropy(), job.signal, latest.current)
       .then((next) => {
         if (job.signal.aborted) {
           next.dispose();
@@ -132,8 +132,8 @@ function Scene({
   const geometry = useMemo(() => createSwatchGeometry(shape, detail), [shape, detail]);
   const movingDetail = Math.min(80, detail);
   const movingGeometry = useMemo(() => createSwatchGeometry(shape, movingDetail), [shape, movingDetail]);
-  const materialId = useMemo(() => getGenerationRecipeId(material.recipe), [material.recipe]);
-  const source = adaptive && textures?.id === materialId ? textures.meshSource : null;
+  const heightKey = useMemo(() => swatchHeightKey(material.recipe), [material.recipe]);
+  const source = adaptive && textures?.heightKey === heightKey ? textures.meshSource : null;
   const { topology, error: meshError } = useAdaptiveMesh(source, shape);
   const refined = useMemo(() => topology && createAdaptiveSwatchGeometry(shape, topology), [shape, topology]);
   const visibleGeometry = reduced ? movingGeometry : (refined ?? geometry);

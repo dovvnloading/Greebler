@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { type GenerationParams, hardwarePatterns } from '../recipes';
-import { planStudioPanels } from './surfaceAssembly';
+import iris from '../../examples/iris.json';
+import serviceDeck from '../../examples/service-deck.json';
+import {
+  type GenerationParams,
+  generationParamsFromRecipe,
+  hardwareMixes,
+  hardwarePatterns,
+  isHardwareMix,
+  parseGenerationRecipe,
+} from '../recipes';
+import { planStudioPanels, planStudioBay } from './surfaceAssembly';
 import { createStudioLayout, type StudioLayout } from './surfaceLayout';
 import { SurfacePen, TILE } from './surfacePrimitives';
 
@@ -144,4 +153,35 @@ it('uses the selected family tile-wide, mixes families reproducibly and gives lo
     expect(geometryId({ ...params, panelPattern: 'mixed', panelOverrides }), panelPattern).toBe(uniform);
     expect(uniform, panelPattern).not.toBe(mixed);
   }
+});
+
+it('matches the panel picker to mix geometry across variation seeds and local overrides', () => {
+  for (const panelPattern of Object.keys(hardwareMixes).filter(isHardwareMix)) {
+    const params = { ...recipe, panelPattern, largeDensity: 1, mediumDensity: 1 };
+    const { slots } = planStudioPanels(params);
+    const assigned = (detailSeed: number) =>
+      slots.map(({ id, seed }) => {
+        const { component } = planStudioBay({ ...params, detailSeed }, seed);
+        if (!component) throw new Error(`Missing selected fitting in ${id}`);
+        return [id, component] as const;
+      });
+    const fittings = assigned(11);
+    expect(fittings).not.toEqual(assigned(37));
+    const panelOverrides = { ...Object.fromEntries(fittings), [slots[0].id]: 'plain' } as const;
+    expect(geometryId({ ...params, detailSeed: 11, panelOverrides: { [slots[0].id]: 'plain' } })).toBe(
+      geometryId({ ...params, detailSeed: 11, panelOverrides }),
+    );
+  }
+});
+
+it('reproduces the height geometry of existing style-default, mixed and single-family recipes', () => {
+  const deck = generationParamsFromRecipe(parseGenerationRecipe(JSON.stringify(serviceDeck)));
+  const single = generationParamsFromRecipe(parseGenerationRecipe(JSON.stringify(iris)));
+  expect(geometryId({ ...deck, panelPattern: undefined })).toBe(
+    '6ce8b651218f796b5777f62480e05128e0f848d5f6b2acfcef03364aa0c49dec',
+  );
+  expect(geometryId({ ...deck, panelPattern: 'mixed' })).toBe(
+    '8d5c8791388035be17185d0f633b729cbd5eb8c3a31b3ac5ac4c813f5595bed6',
+  );
+  expect(geometryId(single)).toBe('9a5560557bfcc202b32aba32489483b36ed8072d8d18f6d9361f0d42bb40e817');
 });

@@ -9,10 +9,24 @@ interface SliderControlProps {
   step: number;
   percent?: boolean;
   integer?: boolean;
+  automatic?: boolean;
+  onAutomatic?: () => void;
   onChange: (value: number) => void;
 }
 
-export function SliderControl({ id, label, value, min, max, step, percent, integer, onChange }: SliderControlProps) {
+export function SliderControl({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  percent,
+  integer,
+  automatic,
+  onAutomatic,
+  onChange,
+}: SliderControlProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const canceled = useRef(false);
   const scale = percent ? 100 : 1;
@@ -28,7 +42,20 @@ export function SliderControl({ id, label, value, min, max, step, percent, integ
 
   return (
     <div className="property-slider">
-      <label htmlFor={id}>{label}</label>
+      <div className="property-slider-label">
+        <label htmlFor={id}>{label}</label>
+        {onAutomatic && (
+          <button
+            type="button"
+            aria-label={`Use component ${label.toLowerCase()}`}
+            title="Use the value authored on each component"
+            aria-pressed={automatic}
+            onClick={onAutomatic}
+          >
+            Auto
+          </button>
+        )}
+      </div>
       <div className="property-readout">
         <input
           aria-label={`${label} value`}
@@ -37,7 +64,8 @@ export function SliderControl({ id, label, value, min, max, step, percent, integ
           min={min * scale}
           max={max * scale}
           step={integer ? 1 : 'any'}
-          value={draft ?? displayed}
+          placeholder={automatic ? 'Auto' : undefined}
+          value={draft ?? (automatic ? '' : displayed)}
           onChange={(event) => setDraft(event.target.value)}
           onFocus={(event) => event.currentTarget.select()}
           onBlur={(event) => commit(event.currentTarget.value)}
@@ -53,7 +81,7 @@ export function SliderControl({ id, label, value, min, max, step, percent, integ
             }
           }}
         />
-        {percent && <span aria-hidden="true">%</span>}
+        {percent && (!automatic || draft !== null) && <span aria-hidden="true">%</span>}
       </div>
       <input
         className="property-track"
@@ -63,7 +91,7 @@ export function SliderControl({ id, label, value, min, max, step, percent, integ
         max={max}
         step={step}
         value={value}
-        aria-valuetext={percent ? `${displayed}%` : undefined}
+        aria-valuetext={automatic ? 'Component values' : percent ? `${displayed}%` : undefined}
         style={{ '--property-fill': `${((value - min) / (max - min)) * 100}%` } as CSSProperties}
         onChange={(event) => onChange(event.target.valueAsNumber)}
       />

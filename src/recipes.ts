@@ -35,6 +35,27 @@ export const componentLabels: Record<PanelComponent, string> = {
   cassette: 'Cartridge rack',
   sensor: 'Optical array',
 };
+// The original broad mix keeps its original ordering so saved seeds reproduce exactly.
+export const hardwareMixes = {
+  mixed: hardwarePatterns,
+  mechanical: ['coupling', 'truss', 'iris', 'harness', 'cassette'],
+  thermal: ['exchanger', 'filter', 'radiator', 'harness', 'coupling'],
+  relay: ['terminal', 'controller', 'harness', 'cassette', 'coupling'],
+  avionics: ['waveguide', 'sensor', 'cassette', 'controller', 'harness', 'terminal'],
+} as const satisfies Record<string, readonly PanelComponent[]>;
+export type HardwareMix = keyof typeof hardwareMixes;
+export const mixLabels: Record<HardwareMix, string> = {
+  mixed: 'Mixed hardware',
+  mechanical: 'Mechanical mix',
+  thermal: 'Thermal mix',
+  relay: 'Relay mix',
+  avionics: 'Avionics mix',
+};
+export const isHardwareMix = (value: unknown): value is HardwareMix =>
+  typeof value === 'string' && Object.hasOwn(hardwareMixes, value);
+export const isPanelPattern = (value: unknown): value is HardwareMix | HardwarePattern =>
+  isHardwareMix(value) || hardwarePatterns.some((family) => family === value);
+
 export type PanelOverrides = Readonly<Record<string, PanelComponent>>;
 
 export const DEFAULT_FINISH = { normalStrength: 1, aoStrength: 1, wear: 0.35 } as const;
@@ -51,12 +72,15 @@ export interface GenerationParams {
   palette: string[];
   detailSeed?: number;
   finishSeed?: number;
-  panelPattern?: HardwarePattern | 'mixed';
+  panelPattern?: HardwarePattern | HardwareMix;
   panelOverrides?: PanelOverrides;
   reliefProfile?: 'formed';
   normalStrength?: number;
   aoStrength?: number;
   wear?: number;
+  metalness?: number;
+  roughness?: number;
+  specularIntensity?: number;
 }
 
 export type GenerationRecipeParams = Readonly<Omit<GenerationParams, 'palette'> & { palette: readonly string[] }>;
@@ -98,14 +122,15 @@ export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
     legacy ||
     ((p.detailSeed === undefined || Number.isSafeInteger(p.detailSeed)) &&
       (p.finishSeed === undefined || Number.isSafeInteger(p.finishSeed)) &&
-      (p.panelPattern === undefined ||
-        p.panelPattern === 'mixed' ||
-        hardwarePatterns.some((id) => id === p.panelPattern)) &&
+      (p.panelPattern === undefined || isPanelPattern(p.panelPattern)) &&
       validPanelOverrides(p.panelOverrides) &&
       (p.reliefProfile === undefined || p.reliefProfile === 'formed') &&
       (p.normalStrength === undefined || inRange(p.normalStrength, 0, 4)) &&
       (p.aoStrength === undefined || inRange(p.aoStrength, 0, 2)) &&
-      (p.wear === undefined || inRange(p.wear, 0, 1)))
+      (p.wear === undefined || inRange(p.wear, 0, 1)) &&
+      (p.metalness === undefined || inRange(p.metalness, 0, 1)) &&
+      (p.roughness === undefined || inRange(p.roughness, 0, 1)) &&
+      (p.specularIntensity === undefined || inRange(p.specularIntensity, 0, 1)))
   );
 }
 
@@ -141,6 +166,9 @@ export function cloneGenerationRecipe(recipe: GenerationRecipe): GenerationRecip
       normalStrength: p.normalStrength ?? DEFAULT_FINISH.normalStrength,
       aoStrength: p.aoStrength ?? DEFAULT_FINISH.aoStrength,
       wear: p.wear ?? DEFAULT_FINISH.wear,
+      ...(p.metalness === undefined ? {} : { metalness: p.metalness }),
+      ...(p.roughness === undefined ? {} : { roughness: p.roughness }),
+      ...(p.specularIntensity === undefined ? {} : { specularIntensity: p.specularIntensity }),
     },
   };
 }

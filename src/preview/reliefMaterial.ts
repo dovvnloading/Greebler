@@ -86,7 +86,7 @@ export function createReliefMaterial(textures: SwatchTextures, tileWidth: number
     fastMotion: { value: false },
     adaptiveSurface: { value: false },
   };
-  const material = new THREE.MeshStandardMaterial({
+  const surface = {
     map: textures.albedo,
     normalMap: textures.normal,
     roughnessMap: textures.orm,
@@ -94,7 +94,12 @@ export function createReliefMaterial(textures: SwatchTextures, tileWidth: number
     aoMap: textures.orm,
     roughness: 1,
     metalness: 1,
-  });
+  };
+  const specular = textures.specularIntensity ?? 1;
+  const material =
+    specular === 1
+      ? new THREE.MeshStandardMaterial(surface)
+      : new THREE.MeshPhysicalMaterial({ ...surface, specularIntensity: specular });
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader =
@@ -184,6 +189,8 @@ export function createReliefMaterial(textures: SwatchTextures, tileWidth: number
       uniforms.fastMotion.value = fastMotion;
       uniforms.inspectGain.value = gain;
       uniforms.reliefRange.value = gain * tileWidth * RELIEF_RANGE_PER_TILE;
+      if (material instanceof THREE.MeshPhysicalMaterial)
+        material.specularIntensity = shading === 'clay' ? 1 : specular;
       uniforms.shadingMode.value = shading === 'clay' ? 1 : shading === 'height' ? 2 : 0;
     },
     dispose() {
