@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   GENERATION_RECIPE_VERSION,
+  DEFAULT_FINISH,
+  parseGenerationRecipe,
   cloneGenerationRecipe,
   createGenerationRecipe,
   generationParamsFromRecipe,
@@ -28,7 +30,7 @@ describe('generation recipes', () => {
     const recipe = createGenerationRecipe(params);
 
     expect(recipe.version).toBe(GENERATION_RECIPE_VERSION);
-    expect(recipe.params).toEqual(params);
+    expect(recipe.params).toEqual({ ...params, ...DEFAULT_FINISH });
 
     params.palette[0] = '#ffffff';
     expect(recipe.params.palette[0]).toBe('#101010');
@@ -41,7 +43,7 @@ describe('generation recipes', () => {
 
     expect(normalizeGenerationRecipe(roundTripped)).toEqual(recipe);
     expect(serializeGenerationRecipe(recipe)).toBe(serializeGenerationRecipe(normalizeGenerationRecipe(recipe)));
-    expect(getGenerationRecipeId(recipe)).toMatch(/^g1-[0-9a-f]{8}$/);
+    expect(getGenerationRecipeId(recipe)).toMatch(/^g2-[0-9a-f]{8}$/);
   });
 
   it('changes the recipe identity when a generation input changes', () => {
@@ -56,9 +58,36 @@ describe('generation recipes', () => {
     const params = createParams();
     const unsupported = {
       ...createGenerationRecipe(params),
-      version: 2,
+      version: 3,
     } as unknown as Parameters<typeof cloneGenerationRecipe>[0];
 
-    expect(() => cloneGenerationRecipe(unsupported)).toThrow(/Expected version 1/);
+    expect(() => cloneGenerationRecipe(unsupported)).toThrow(/Invalid material recipe/);
   });
+});
+
+it('round-trips a v1 recipe without adding v2 fields or changing its ID', () => {
+  const params = createParams();
+  const json = JSON.stringify({ version: 1, params });
+  const legacy = parseGenerationRecipe(json);
+  expect(serializeGenerationRecipe(legacy)).toBe(json);
+  expect(getGenerationRecipeId(legacy)).toBe('g1-625a1b4a');
+  expect(getGenerationRecipeId(createGenerationRecipe(params))).not.toBe(getGenerationRecipeId(legacy));
+});
+
+it.each([
+  { resolution: -1 },
+  { resolution: 8193 },
+  { palette: [] },
+  { palette: ['blue'] },
+  { normalStrength: -1 },
+  { aoStrength: 4 },
+  { wear: 2 },
+  { complexity: 99 },
+  { seed: 1.2 },
+  { detailSeed: 1.2 },
+  { finishSeed: '124' },
+])('rejects invalid inputs before allocating raster surfaces', (change) => {
+  expect(() =>
+    parseGenerationRecipe(JSON.stringify({ version: 2, params: { ...createParams(), ...change } })),
+  ).toThrow();
 });

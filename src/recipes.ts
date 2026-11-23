@@ -1,6 +1,8 @@
-export const GENERATION_RECIPE_VERSION = 1 as const;
-
+export const GENERATION_RECIPE_VERSION = 2 as const;
+export type RecipeVersion = 1 | typeof GENERATION_RECIPE_VERSION;
 export type GenerationStyle = 'tech' | 'electrical';
+
+export const DEFAULT_FINISH = { normalStrength: 1, aoStrength: 1, wear: 0.35 } as const;
 
 export interface GenerationParams {
   style: GenerationStyle;
@@ -12,108 +14,110 @@ export interface GenerationParams {
   gapSize: number;
   complexity: number;
   palette: string[];
+  detailSeed?: number;
+  finishSeed?: number;
+  normalStrength?: number;
+  aoStrength?: number;
+  wear?: number;
 }
 
-export interface GenerationRecipeParams {
-  readonly style: GenerationStyle;
-  readonly resolution: number;
-  readonly seed: number;
-  readonly largeDensity: number;
-  readonly mediumDensity: number;
-  readonly smallDensity: number;
-  readonly gapSize: number;
-  readonly complexity: number;
-  readonly palette: readonly string[];
-}
+export type GenerationRecipeParams = Readonly<Omit<GenerationParams, 'palette'> & { palette: readonly string[] }>;
 
 export interface GenerationRecipe {
-  readonly version: typeof GENERATION_RECIPE_VERSION;
+  readonly version: RecipeVersion;
   readonly params: GenerationRecipeParams;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
-const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+function inRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
 
-const hasGenerationParamsShape = (value: unknown): value is GenerationRecipeParams => {
-  if (!isRecord(value)) return false;
-  if (value.style !== 'tech' && value.style !== 'electrical') return false;
+export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 2) || !isRecord(value.params)) return false;
+  const p = value.params;
+  if (p.style !== 'tech' && p.style !== 'electrical') return false;
+  if (!Number.isSafeInteger(p.seed) || !Number.isInteger(p.resolution) || !inRange(p.resolution, 1, 8192)) return false;
+  if (![p.largeDensity, p.mediumDensity, p.smallDensity].every((v) => inRange(v, 0, 1))) return false;
+  if (!inRange(p.gapSize, 0, 16) || !Number.isInteger(p.complexity) || !inRange(p.complexity, 1, 8)) return false;
+  if (!Array.isArray(p.palette) || p.palette.length < 1 || p.palette.length > 32) return false;
+  if (!p.palette.every((color) => typeof color === 'string' && /^#[\da-f]{6}$/i.test(color))) return false;
+  return (
+    value.version === 1 ||
+    ((p.detailSeed === undefined || Number.isSafeInteger(p.detailSeed)) &&
+      (p.finishSeed === undefined || Number.isSafeInteger(p.finishSeed)) &&
+      (p.normalStrength === undefined || inRange(p.normalStrength, 0, 4)) &&
+      (p.aoStrength === undefined || inRange(p.aoStrength, 0, 2)) &&
+      (p.wear === undefined || inRange(p.wear, 0, 1)))
+  );
+}
 
-  const numericFields = [
-    'resolution',
-    'seed',
-    'largeDensity',
-    'mediumDensity',
-    'smallDensity',
-    'gapSize',
-    'complexity',
-  ];
-  if (!numericFields.every((field) => isFiniteNumber(value[field]))) return false;
-
-  return Array.isArray(value.palette) && value.palette.every((color) => typeof color === 'string');
-};
-
-export const isGenerationRecipe = (value: unknown): value is GenerationRecipe => {
-  return isRecord(value) && value.version === GENERATION_RECIPE_VERSION && hasGenerationParamsShape(value.params);
-};
-
-const cloneRecipeParams = (params: GenerationRecipeParams): GenerationRecipeParams => ({
-  style: params.style,
-  resolution: params.resolution,
-  seed: params.seed,
-  largeDensity: params.largeDensity,
-  mediumDensity: params.mediumDensity,
-  smallDensity: params.smallDensity,
-  gapSize: params.gapSize,
-  complexity: params.complexity,
-  palette: [...params.palette],
-});
-
-export const createGenerationRecipe = (params: GenerationParams): GenerationRecipe => ({
-  version: GENERATION_RECIPE_VERSION,
-  params: cloneRecipeParams(params),
-});
-
-export const cloneGenerationRecipe = (recipe: GenerationRecipe): GenerationRecipe => {
+export function cloneGenerationRecipe(recipe: GenerationRecipe): GenerationRecipe {
   if (!isGenerationRecipe(recipe)) {
-    throw new Error(`Unsupported or invalid generation recipe. Expected version ${GENERATION_RECIPE_VERSION}.`);
+    throw new Error(
+      'Invalid material recipe. Use version 1 or 2, a size from 1 to 8192, valid controls and a hex palette.',
+    );
   }
-
-  return {
-    version: GENERATION_RECIPE_VERSION,
-    params: cloneRecipeParams(recipe.params),
+  const p = recipe.params;
+  const params = {
+    style: p.style,
+    resolution: p.resolution,
+    seed: p.seed,
+    largeDensity: p.largeDensity,
+    mediumDensity: p.mediumDensity,
+    smallDensity: p.smallDensity,
+    gapSize: p.gapSize,
+    complexity: p.complexity,
+    palette: [...p.palette],
   };
-};
-
-export const normalizeGenerationRecipe = (input: GenerationParams | GenerationRecipe): GenerationRecipe => {
-  if ('version' in input) return cloneGenerationRecipe(input);
-  return createGenerationRecipe(input);
-};
-
-export const generationParamsFromRecipe = (recipe: GenerationRecipe): GenerationParams => {
-  const cloned = cloneGenerationRecipe(recipe);
+  if (recipe.version === 1) return { version: 1, params };
   return {
-    ...cloned.params,
-    palette: [...cloned.params.palette],
+    version: 2,
+    params: {
+      ...params,
+      ...(p.detailSeed === undefined ? {} : { detailSeed: p.detailSeed }),
+      ...(p.finishSeed === undefined ? {} : { finishSeed: p.finishSeed }),
+      normalStrength: p.normalStrength ?? DEFAULT_FINISH.normalStrength,
+      aoStrength: p.aoStrength ?? DEFAULT_FINISH.aoStrength,
+      wear: p.wear ?? DEFAULT_FINISH.wear,
+    },
   };
-};
+}
 
-export const serializeGenerationRecipe = (recipe: GenerationRecipe): string => {
-  const normalized = cloneGenerationRecipe(recipe);
-  return JSON.stringify({
-    version: normalized.version,
-    params: normalized.params,
-  });
-};
+export function createGenerationRecipe(
+  params: GenerationParams,
+  version: RecipeVersion = GENERATION_RECIPE_VERSION,
+): GenerationRecipe {
+  return cloneGenerationRecipe({ version, params });
+}
+
+export function normalizeGenerationRecipe(input: GenerationParams | GenerationRecipe): GenerationRecipe {
+  return 'version' in input ? cloneGenerationRecipe(input) : createGenerationRecipe(input);
+}
+
+export function generationParamsFromRecipe(recipe: GenerationRecipe): GenerationParams {
+  const { params } = cloneGenerationRecipe(recipe);
+  return { ...params, palette: [...params.palette] };
+}
+
+export function parseGenerationRecipe(json: string): GenerationRecipe {
+  if (json.length > 65536) throw new Error('A material recipe must be smaller than 64 KiB.');
+  const value: unknown = JSON.parse(json);
+  if (!isGenerationRecipe(value))
+    throw new Error('Invalid material recipe. Check the version, resolution, controls and palette.');
+  return cloneGenerationRecipe(value);
+}
+
+export const serializeGenerationRecipe = (recipe: GenerationRecipe): string =>
+  JSON.stringify(cloneGenerationRecipe(recipe));
 
 export const getGenerationRecipeId = (recipe: GenerationRecipe): string => {
   const serialized = serializeGenerationRecipe(recipe);
   let hash = 0x811c9dc5;
-
   for (let index = 0; index < serialized.length; index += 1) {
     hash ^= serialized.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193);
   }
-
-  return `g${GENERATION_RECIPE_VERSION}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  return `g${recipe.version}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 };
