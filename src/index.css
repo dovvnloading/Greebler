@@ -151,3 +151,133 @@ input[type="number"] {
 .studio-action:disabled {
   opacity: 0.45;
 }
+
+.studio-swatch {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  height: clamp(400px, 63vh, 800px);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #363b41;
+  border-radius: 14px;
+  background: #181b1f;
+}
+.swatch-viewport {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.swatch-tools,
+.swatch-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 13px;
+  color: #c3c8cf;
+}
+.swatch-tools {
+  border-bottom: 1px solid #353a40;
+}
+.swatch-tools h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: auto;
+  color: #eef0f3;
+}
+.swatch-choices {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.swatch-choices button,
+.swatch-shading select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.swatch-choices button:hover,
+.swatch-shading select:hover {
+  background: #30353b;
+  color: white;
+}
+.swatch-choices button[aria-pressed="true"] {
+  background: #393633;
+  border-color: #69513d;
+  color: #ffc79d;
+}
+.swatch-shading {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.swatch-shading select {
+  background: #252a30;
+  color: #e0e3e7;
+  border-color: #43484f;
+}
+.swatch-stage {
+  display: flex;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #292e35;
+}
+.swatch-footer {
+  justify-content: space-between;
+  border-top: 1px solid #353a40;
+  padding-block: 6px;
+}
+.swatch-resolution {
+  font: 11px var(--font-mono);
+  color: #aeb5bd;
+}
+.swatch-azimuth {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  font-size: 11px;
+}
+.swatch-azimuth input {
+  width: clamp(54px, 7vw, 104px);
+  accent-color: #d3a786;
+}
+.swatch-error {
+  position: absolute;
+  inset: auto 10px 8px;
+  color: #ffd0ac;
+  background: #232528;
+  padding: 4px 8px;
+}
+@media (max-width: 1150px) {
+  .swatch-tools .swatch-choices span {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .studio-swatch {
+    height: clamp(360px, 55svh, 510px);
+  }
+  .swatch-tools,
+  .swatch-footer {
+    gap: 5px;
+    padding-inline: 8px;
+  }
+  .swatch-tools .swatch-shading span {
+    display: none;
+  }
+  .swatch-choices button {
+    padding-inline: 6px;
+  }
+}

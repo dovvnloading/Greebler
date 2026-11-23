@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 async function selectOption(page: Page, id: string, name: string) {
   await page.locator(id).selectOption({ label: name });
@@ -27,7 +27,9 @@ test('renders the 3D preview and regenerates the selected map size', async ({ pa
   const albedoMap = page.getByRole('img', { name: 'albedo map' });
   await expect(albedoMap).toHaveJSProperty('naturalWidth', 512);
   const preview = page.locator('canvas[data-engine]');
-  await expect(preview).toBeVisible();
+  await expect(preview).toHaveAttribute('data-material-size', '512');
+  const draftId = await preview.getAttribute('data-material-id');
+  if (!draftId) throw new Error('Missing bound draft material.');
   // The canvas can be present while a reused loading material renders the whole swatch black.
   await expect
     .poll(
@@ -85,7 +87,8 @@ test('renders the 3D preview and regenerates the selected map size', async ({ pa
 
   await page.getByRole('button', { name: 'Bake 1024 × 1024' }).click();
   await expect(albedoMap).toHaveJSProperty('naturalWidth', 1024);
-  await expect(preview).toBeVisible();
+  await expect(preview).toHaveAttribute('data-material-size', '1024');
+  await expect(preview).not.toHaveAttribute('data-material-id', draftId);
 });
 
 test('generates and exports authored electrical materials when WebGL is unavailable', async ({ page }) => {

@@ -8,10 +8,11 @@ export interface Finish {
   paintedMetal?: boolean;
 }
 
+export type StrokeProfile = { kind: 'tube' | 'louver'; rise: number };
 type Shape =
   | { kind: 'rect'; x: number; y: number; w: number; h: number }
   | { kind: 'disc'; x: number; y: number; radius: number }
-  | { kind: 'path'; points: number[]; width: number };
+  | { kind: 'path'; points: number[]; width: number; profile?: StrokeProfile };
 
 interface Mark {
   shape: Shape;
@@ -32,6 +33,7 @@ export class SurfacePen {
     private x = 0,
     private y = 0,
     private transpose = false,
+    readonly formed = false,
   ) {}
 
   frame(x: number, y: number, transpose = false) {
@@ -40,6 +42,7 @@ export class SurfacePen {
       this.x + (this.transpose ? y : x),
       this.y + (this.transpose ? x : y),
       this.transpose !== transpose,
+      this.formed,
     );
   }
 
@@ -92,15 +95,19 @@ export class SurfacePen {
   }
 
   /** A closed filled contour, or a rounded open stroke when width is positive. */
-  path(points: number[], height: number, finish?: Finish, width = 0) {
+  path(points: number[], height: number, finish?: Finish, width = 0, profile?: StrokeProfile) {
     const absolute: number[] = [];
     let left = Infinity;
     let top = Infinity;
     let right = -Infinity;
     let bottom = -Infinity;
+    // A transpose reflects the local frame. Reverse a pitched stroke to keep its high
+    // lip on the same side in panel space after that reflection.
+    const reverse = this.transpose && profile?.kind === 'louver';
     for (let i = 0; i < points.length; i += 2) {
-      const x = this.x + (this.transpose ? points[i + 1] : points[i]);
-      const y = this.y + (this.transpose ? points[i] : points[i + 1]);
+      const j = reverse ? points.length - 2 - i : i;
+      const x = this.x + (this.transpose ? points[j + 1] : points[j]);
+      const y = this.y + (this.transpose ? points[j] : points[j + 1]);
       absolute.push(x, y);
       left = Math.min(left, x);
       top = Math.min(top, y);
@@ -109,7 +116,7 @@ export class SurfacePen {
     }
     const radius = width / 2;
     this.add(
-      { kind: 'path', points: absolute, width },
+      { kind: 'path', points: absolute, width, ...(profile && { profile }) },
       left - radius,
       top - radius,
       right + radius,

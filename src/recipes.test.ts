@@ -132,3 +132,17 @@ it('canonicalizes panel overrides by stable slot ID and removes empty edits from
     ).toThrow();
   }
 });
+
+it('records formed relief as an explicit recipe input while preserving the original profile when absent', () => {
+  const old = createGenerationRecipe(createParams());
+  const next = createGenerationRecipe({ ...createParams(), reliefProfile: 'formed' });
+  expect(serializeGenerationRecipe(old)).not.toContain('reliefProfile');
+  expect(getGenerationRecipeId(next)).not.toBe(getGenerationRecipeId(old));
+  expect(parseGenerationRecipe(serializeGenerationRecipe(next))).toEqual(next);
+  expect(() =>
+    parseGenerationRecipe(JSON.stringify({ version: 2, params: { ...next.params, reliefProfile: 'unknown' } })),
+  ).toThrow();
+  expect(
+    createGenerationRecipe({ ...createParams(), reliefProfile: 'formed' }, 1).params.reliefProfile,
+  ).toBeUndefined();
+});

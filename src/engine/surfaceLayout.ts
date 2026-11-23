@@ -103,15 +103,19 @@ function cover(
 function radiator(pen: SurfacePen, w: number, h: number, z: number, detail: number) {
   pen.chamfer(0, 0, w, h, 6, z - 10, gunmetal);
   pen.chamfer(3, 3, w - 6, h - 6, 3, z - 29, rubber);
-  // Angled louvers with a rounded crown. Only the relief changes across the crown.
+  // Each bent slat sits above the common recessed bed.
   const pitch = 9 + (1 - detail) * 4;
   const shear = Math.min(13, h * 0.18);
   const count = Math.floor((w - 16 - shear) / pitch);
   for (let i = 0; i < count; i++) {
     const x = 7 + i * pitch;
     const y = h - 7;
-    pen.path([x, y, x + shear, 7], z - 6, gunmetal, pitch * 0.62);
-    pen.path([x, y, x + shear, 7], z + 2, undefined, pitch * 0.37);
+    if (pen.formed) {
+      pen.path([x, y, x + shear, 7], z - 22, gunmetal, pitch * 0.65, { kind: 'louver', rise: 28 });
+    } else {
+      pen.path([x, y, x + shear, 7], z - 6, gunmetal, pitch * 0.62);
+      pen.path([x, y, x + shear, 7], z + 2, undefined, pitch * 0.37);
+    }
   }
   if (w > 150) {
     pen.chamfer(w * 0.5 - 3, 2, 6, h - 4, 1, z + 5, steel);
@@ -313,8 +317,12 @@ function backplane(pen: SurfacePen, w: number, h: number, params: GenerationPara
   for (const y of [offset, h - offset]) {
     const bend = Math.min(6, 0.08 * h);
     const points = [margin, y, w * 0.24, y, w * 0.24 + bend, y + bend, w - margin, y + bend];
-    pen.path(points, 49, undefined, 4);
-    pen.path(points, 55, undefined, 2);
+    if (pen.formed) {
+      pen.path(points, 43, undefined, 4, { kind: 'tube', rise: 16 });
+    } else {
+      pen.path(points, 49, undefined, 4);
+      pen.path(points, 55, undefined, 2);
+    }
   }
   if (sample(seed, 33) < params.smallDensity) {
     for (const x of [margin, w - margin]) bolt(pen, x, h * 0.5, 3.5, 43, 0.5);
@@ -355,8 +363,13 @@ function drawPanel(
   const key = 0.22 + 0.44 * sample(seed, 18);
   cover(pen, w, h, 0, cut, z - 40, rubber, key);
   cover(pen, w, h, 1.9, cut, z - 24, exposed ? steel : gunmetal, key);
-  cover(pen, w, h, 3, cut, z - 10, finish, key);
-  cover(pen, w, h, 4.6, cut, z, undefined, key);
+  if (pen.formed) {
+    // A single rolled shoulder joins the outer flange to the coated face.
+    cover(pen, w, h, 3, cut, z, finish, key);
+  } else {
+    cover(pen, w, h, 3, cut, z - 10, finish, key);
+    cover(pen, w, h, 4.6, cut, z, undefined, key);
+  }
 
   const detail = params.detailSeed === undefined ? seed : hash(seed, params.detailSeed);
   const fine = params.smallDensity;
@@ -439,7 +452,14 @@ function fitBay(pen: SurfacePen, slot: PanelSlot, params: GenerationParams) {
 }
 
 function pipe(pen: SurfacePen, points: number[], width: number, z: number, finish: Finish) {
-  // Cross-section samples of a round hose: the normal map supplies the highlight after lighting.
+  if (pen.formed) {
+    // Wide supply hoses sit deeper in their channels; the crown clears its retaining
+    // strap. Thin capillaries keep a proportionally smaller section.
+    const rise = Math.min(86, Math.max(16, width * 8));
+    pen.path(points, z + 34 - rise, finish, width, { kind: 'tube', rise });
+    return;
+  }
+  // The archived profile sampled the cross-section at four heights.
   pen.path(points, z, finish, width);
   for (const radius of [0.87, 0.66, 0.38]) {
     const rise = Math.round(Math.sqrt(1 - radius * radius) * 34);
@@ -460,7 +480,7 @@ function serviceTrunk(pen: SurfacePen, width: number, params: GenerationParams, 
     const y = margin + pitch * (lane + 0.5);
     const jog = (secondary ? -1 : 1) * Math.min(margin * 0.7, 9);
     const points = [
-      -2,
+      pen.formed ? 0 : -2,
       y,
       192,
       y,
@@ -478,7 +498,7 @@ function serviceTrunk(pen: SurfacePen, width: number, params: GenerationParams, 
       y + jog,
       822,
       y,
-      TILE + 2,
+      pen.formed ? TILE : TILE + 2,
       y,
     ];
     const finish = electrical ? [rubber, enamel, rubber, insulator, rubber][lane] : [steel, gunmetal, copper][lane];
@@ -499,7 +519,7 @@ function serviceTrunk(pen: SurfacePen, width: number, params: GenerationParams, 
 /** Compile a periodic, seed-stable vector assembly once. Each output strip replays only intersecting marks. */
 export function createStudioLayout(params: GenerationParams): StudioLayout {
   const marks: StudioLayout[number][] = [];
-  const root = new SurfacePen(marks);
+  const root = new SurfacePen(marks, 0, 0, false, params.reliefProfile === 'formed');
   root.rect(0, 0, TILE, TILE, 29, coating(params.palette, 0.16, 167));
   const { xPhase, yPhase, transpose, x, y, trunk, lateral, slots } = planStudioPanels(params);
   const pen = root.frame(xPhase, yPhase, transpose);

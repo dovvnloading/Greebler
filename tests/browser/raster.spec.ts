@@ -58,7 +58,25 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
       const changedSeed = await signatures(seed);
       releaseIdleWorker();
       const freshSeed = await signatures(seed);
-      return { base, revised, changedAO, freshAO, changedWear, freshWear, changedSeed, freshSeed };
+      const formed = { ...seed, params: { ...seed.params, reliefProfile: 'formed' as const } };
+      const changedProfile = await signatures(formed);
+      const tuned = { ...formed, params: { ...formed.params, aoStrength: 1.4, normalStrength: 0.8 } };
+      const tunedProfile = await signatures(tuned);
+      releaseIdleWorker();
+      const freshProfile = await signatures(tuned);
+      return {
+        base,
+        revised,
+        changedAO,
+        freshAO,
+        changedWear,
+        freshWear,
+        changedSeed,
+        freshSeed,
+        changedProfile,
+        tunedProfile,
+        freshProfile,
+      };
     } finally {
       releaseIdleWorker();
     }
@@ -73,6 +91,11 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
   expect(frames.changedWear.hashes).toEqual(frames.freshWear.hashes);
   expect(frames.changedSeed.hashes.height).not.toBe(frames.freshWear.hashes.height);
   expect(frames.changedSeed.hashes).toEqual(frames.freshSeed.hashes);
+  expect(frames.changedProfile.hashes.height).not.toBe(frames.freshSeed.hashes.height);
+  expect(frames.tunedProfile.stage).toBe('Updating finish');
+  expect(frames.tunedProfile.hashes.normal).not.toBe(frames.changedProfile.hashes.normal);
+  expect(frames.tunedProfile.hashes.ao).not.toBe(frames.changedProfile.hashes.ao);
+  expect(frames.tunedProfile.hashes).toEqual(frames.freshProfile.hashes);
 });
 
 test('legacy jobs retain HTML canvas PNGs and can cancel during subdivision', async ({ page }) => {

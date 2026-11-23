@@ -1,9 +1,10 @@
 import type { GenerationParams } from '../recipes';
 import type { StudioMaps } from '../TextureGenerator';
 import { context2D, makeCanvas, releaseCanvas } from './canvas';
-import { StripPng, type PngFormat } from './png';
+import { FormedHeightRaster } from './formedHeight';
+import { type PngFormat, StripPng } from './png';
 import type { MapWriter } from './pngWorkers';
-import { ReliefField, SurfaceFinish } from './surfaceBake';
+import { FormedFinish, ReliefField, SurfaceFinish } from './surfaceBake';
 import { createStudioLayout, paintStudioLayout } from './surfaceLayout';
 
 export const mapNames = ['albedo', 'height', 'normal', 'roughness', 'metalness', 'ao', 'orm'] as const;
@@ -135,7 +136,10 @@ export function* renderStudio(
   // Only height needs random access across the tile. The original canvas, native
   // raster surfaces, derived channels and PNG input are all bounded to a strip.
   const heights = new Uint16Array(size * size);
-  const field = new ReliefField(heights, size);
+  const formed = params.reliefProfile === 'formed';
+  const field = new ReliefField(heights, size, formed);
+  const machined = formed ? new FormedHeightRaster(layout, size) : undefined;
+  const microfinish = formed ? new FormedFinish(size, params.finishSeed ?? params.seed, finish) : undefined;
   const retained = capture
     ? {
         field,
@@ -150,14 +154,31 @@ export function* renderStudio(
     const packed = context2D(second);
     for (let top = 0; top < size; top += bandRows) {
       const rows = Math.min(bandRows, size - top);
-      surface.setTransform(1, 0, 0, 1, 0, -top);
-      surface.fillStyle = '#141414';
-      surface.fillRect(0, top, size, rows);
-      paintStudioLayout({ height: surface }, layout, size, { top, bottom: top + rows });
-      const data = surface.getImageData(0, 0, size, rows).data;
-      for (let row = 0; row < rows; row++) {
-        const y = top + row;
-        for (let x = 0; x < size; x++) heights[y * size + x] = finish.height(data[(row * size + x) * 4], x, y);
+      if (machined && microfinish) {
+        machined.paint(heights, top, rows);
+        packed.setTransform(1, 0, 0, 1, 0, -top);
+        packed.fillStyle = 'rgb(0,178,8)';
+        packed.fillRect(0, top, size, rows);
+        paintStudioLayout({ packedMaterial: packed }, layout, size, { top, bottom: top + rows });
+        const material = packed.getImageData(0, 0, size, rows).data;
+        for (let row = 0; row < rows; row++) {
+          const y = top + row;
+          for (let x = 0; x < size; x++) {
+            const i = y * size + x,
+              src = (row * size + x) * 4;
+            heights[i] = microfinish.height(heights[i], x, y, material[src], material[src + 2]);
+          }
+        }
+      } else {
+        surface.setTransform(1, 0, 0, 1, 0, -top);
+        surface.fillStyle = '#141414';
+        surface.fillRect(0, top, size, rows);
+        paintStudioLayout({ height: surface }, layout, size, { top, bottom: top + rows });
+        const data = surface.getImageData(0, 0, size, rows).data;
+        for (let row = 0; row < rows; row++) {
+          const y = top + row;
+          for (let x = 0; x < size; x++) heights[y * size + x] = finish.height(data[(row * size + x) * 4], x, y);
+        }
       }
       yield { fraction: 0.01 + (0.24 * (top + rows)) / size, stage: 'Height field' };
     }
