@@ -16,6 +16,8 @@ function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 
 export type { GenerationParams, GenerationRecipe } from './recipes';
 
+export type TextureMaps<T> = { albedo: T; height: T; normal: T; roughness: T; metalness: T };
+
 type PanelTier = 'large' | 'medium' | 'small';
 
 interface PanelShape {
@@ -105,7 +107,42 @@ export class TextureGenerator {
     return Math.floor(this.randomRange(min, max + 1));
   }
 
-  public generateMaps(): { albedo: string; height: string; normal: string; roughness: string; metalness: string } {
+  public generateMaps(): TextureMaps<string> {
+    const maps = this.drawMaps();
+    return {
+      albedo: maps.albedo.toDataURL('image/png'),
+      height: maps.height.toDataURL('image/png'),
+      normal: maps.normal.toDataURL('image/png'),
+      roughness: maps.roughness.toDataURL('image/png'),
+      metalness: maps.metalness.toDataURL('image/png'),
+    };
+  }
+
+  public async generateMapBlobs(signal?: AbortSignal): Promise<TextureMaps<Blob>> {
+    signal?.throwIfAborted();
+    const maps = this.drawMaps();
+    const encode = (canvas: HTMLCanvasElement) => {
+      signal?.throwIfAborted();
+      return new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((blob) => {
+          if (signal?.aborted) reject(signal.reason);
+          else if (blob) resolve(blob);
+          else reject(new Error('Could not encode the texture as a PNG. Try a smaller resolution.'));
+        }, 'image/png'),
+      );
+    };
+
+    // Snapshot one canvas at a time to limit the encoder's peak memory at 4K and 8K.
+    return {
+      albedo: await encode(maps.albedo),
+      height: await encode(maps.height),
+      normal: await encode(maps.normal),
+      roughness: await encode(maps.roughness),
+      metalness: await encode(maps.metalness),
+    };
+  }
+
+  private drawMaps(): TextureMaps<HTMLCanvasElement> {
     this.randomSeed = this.params.seed;
 
     // Initialize all maps
@@ -143,8 +180,6 @@ export class TextureGenerator {
     // Start recursive subdivision
     const gap = this.params.gapSize * this.scale;
     this.subdivide(gap, gap, this.canvas.width - gap * 2, this.canvas.height - gap * 2, 0);
-
-    const heightDataUrl = this.canvas.toDataURL('image/png');
 
     // 2. Generate Albedo Map (Colorizer - Discrete Levels)
     // We overwrite the PBR albedo with the discrete color map based on height levels.
@@ -191,10 +226,6 @@ export class TextureGenerator {
     // unchanged, producing an inconsistent PBR set.
     this.albedoCtx.drawImage(this.materialAlbedoCanvas, 0, 0);
 
-    const albedoDataUrl = this.albedoCanvas.toDataURL('image/png');
-    const roughnessDataUrl = this.roughnessCanvas.toDataURL('image/png');
-    const metalnessDataUrl = this.metalnessCanvas.toDataURL('image/png');
-
     // Generate Normal Map from Height Map
     const normalCanvas = document.createElement('canvas');
     normalCanvas.width = this.canvas.width;
@@ -236,14 +267,12 @@ export class TextureGenerator {
       }
     }
     normalCtx.putImageData(normalImgData, 0, 0);
-    const normalDataUrl = normalCanvas.toDataURL('image/png');
-
     return {
-      albedo: albedoDataUrl,
-      height: heightDataUrl,
-      normal: normalDataUrl,
-      roughness: roughnessDataUrl,
-      metalness: metalnessDataUrl,
+      albedo: this.albedoCanvas,
+      height: this.canvas,
+      normal: normalCanvas,
+      roughness: this.roughnessCanvas,
+      metalness: this.metalnessCanvas,
     };
   }
 

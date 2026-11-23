@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -16,7 +17,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Greebler encountered an unrecoverable rendering error.', error, errorInfo);
+    console.error('Greebler encountered a rendering error.', error, errorInfo);
   }
 
   private handleReload = () => {
@@ -27,6 +28,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (!this.state.error) {
       return this.props.children;
     }
+
+    if (this.props.fallback !== undefined) return this.props.fallback;
 
     return (
       <main className="min-h-screen bg-[#151619] text-[#e5e9f0] p-8 flex items-center justify-center">
