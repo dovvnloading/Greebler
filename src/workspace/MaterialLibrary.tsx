@@ -11,9 +11,15 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { componentLabels } from '../recipes';
+import { componentLabels, type GenerationStyle } from '../recipes';
 import { Dialog } from './Dialog';
 import { factoryMaterials, type LibraryMaterial } from './materialLibrary';
+
+const materialTypes: Record<GenerationStyle, string> = {
+  tech: 'Hard surface',
+  electrical: 'Electrical',
+  displacement: 'Height field',
+};
 
 interface Props {
   saved: LibraryMaterial[];
@@ -114,7 +120,7 @@ export function MaterialLibrary({
                 <img src={item.image} alt="" width={480} height={248} loading="lazy" />
                 <span className="preset-name">{item.name}</span>
                 <span className="preset-type">
-                  {item.recipe.params.style === 'tech' ? 'Hard surface' : 'Electrical'}
+                  {materialTypes[item.recipe.params.style]}
                   <span>2K</span>
                 </span>
               </button>

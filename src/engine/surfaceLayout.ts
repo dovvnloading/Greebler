@@ -1,4 +1,6 @@
 import { type GenerationParams, hardwarePatterns, type HardwarePattern, type PanelComponent } from '../recipes';
+import { drawDisplacementBay } from './displacementLayout';
+import { coating } from './panelCoating';
 import { cassette, sensor, waveguide } from './instrumentPatterns';
 import { coupling, iris, truss } from './mechanicalPatterns';
 import { board, bolt, copper, enamel, gunmetal, insulator, pipe, rubber, steel } from './patternHardware';
@@ -7,32 +9,6 @@ import { hash, type PanelSlot, planStudioPanels, sample } from './surfaceAssembl
 import { type Finish, type StudioLayout, SurfacePen, TILE } from './surfacePrimitives';
 
 export { paintStudioLayout, type StudioContexts, type StudioLayout } from './surfacePrimitives';
-
-function mixColor(a: string, b: string, proportion: number) {
-  const unpack = (s: string) => Number.parseInt(s.replace('#', ''), 16);
-  const from = unpack(a);
-  const to = unpack(b);
-  let color = '#';
-  for (const shift of [16, 8, 0]) {
-    const left = (from >>> shift) & 255;
-    const right = (to >>> shift) & 255;
-    color += Math.round(left + proportion * (right - left))
-      .toString(16)
-      .padStart(2, '0');
-  }
-  return color;
-}
-
-function coating(palette: readonly string[], tone: number, roughness: number): Finish {
-  const at = Math.max(0, Math.min(1, tone)) * (palette.length - 1);
-  const lower = Math.floor(at);
-  return {
-    color: mixColor(palette[lower], palette[Math.min(lower + 1, palette.length - 1)], at - lower),
-    roughness,
-    metalness: 0,
-    paintedMetal: true,
-  };
-}
 
 /** Tooling channel and retaining bar for a removable panel latch. */
 function latch(pen: SurfacePen, x: number, y: number, z: number) {
@@ -455,6 +431,17 @@ function fitBay(pen: SurfacePen, slot: PanelSlot, params: GenerationParams) {
   const splitAlongX = w > h;
   const frame = pen.frame(0, 0, !splitAlongX);
   const component = params.panelOverrides?.[slot.id];
+  if (params.style === 'displacement') {
+    const detail = params.detailSeed === undefined ? seed : hash(seed, params.detailSeed);
+    const fitted =
+      component ?? (sample(seed, 9) < params.mediumDensity ? panelPattern(params.panelPattern, detail) : undefined);
+    if (fitted) {
+      drawPanel(frame, span, Math.min(w, h), params, seed, fitted);
+    } else {
+      drawDisplacementBay(pen, w, h, params, seed);
+    }
+    return;
+  }
   if (component || sample(seed, 19) <= params.largeDensity) {
     drawPanel(frame, span, Math.min(w, h), params, seed, component);
   } else if (sample(seed, 20) < params.mediumDensity) {
@@ -533,7 +520,7 @@ export function createStudioLayout(params: GenerationParams): StudioLayout {
   const { xPhase, yPhase, transpose, x, y, trunk, lateral, slots } = planStudioPanels(params);
   const pen = root.frame(xPhase, yPhase, transpose);
   for (const slot of slots) fitBay(pen.frame(slot.x, slot.y), slot, params);
-  if (params.mediumDensity > 0) {
+  if (trunk > 0 && params.mediumDensity > 0) {
     serviceTrunk(pen.frame(0, y), lateral, params, true);
     serviceTrunk(pen.frame(x, 0, true), trunk, params, false);
     const junction = pen.frame(x - 5, y - 7);

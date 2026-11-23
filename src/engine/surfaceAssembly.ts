@@ -52,8 +52,11 @@ export function planStudioPanels(params: GenerationRecipeParams) {
   const transpose = sample(seed, 90) > 0.5;
   const x = 256 + Math.floor(sample(seed, 93) * 37) * 8;
   const y = 296 + Math.floor(sample(seed, 94) * 44) * 8;
-  const trunk = Math.round((params.style === 'electrical' ? 110 : 84) * (0.65 + params.mediumDensity * 0.45));
-  const lateral = Math.round(28 + params.mediumDensity * 24);
+  const trunk =
+    params.style === 'displacement'
+      ? 0
+      : Math.round((params.style === 'electrical' ? 110 : 84) * (0.65 + params.mediumDensity * 0.45));
+  const lateral = params.style === 'displacement' ? 0 : Math.round(28 + params.mediumDensity * 24);
   const slots: PanelSlot[] = [];
   const maxDepth = 1 + Math.round(params.complexity * 0.5);
 

@@ -10,7 +10,7 @@ export interface Finish {
 
 export type StrokeProfile = { kind: 'tube' | 'louver'; rise: number };
 type Shape =
-  | { kind: 'rect'; x: number; y: number; w: number; h: number }
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; edge?: 'square' }
   | { kind: 'disc'; x: number; y: number; radius: number }
   | { kind: 'path'; points: number[]; width: number; profile?: StrokeProfile };
 
@@ -63,14 +63,14 @@ export class SurfacePen {
     }
   }
 
-  rect(x: number, y: number, w: number, h: number, height: number, finish?: Finish) {
+  rect(x: number, y: number, w: number, h: number, height: number, finish?: Finish, edge?: 'square') {
     if (w <= 0 || h <= 0) return;
     const left = this.x + (this.transpose ? y : x);
     const top = this.y + (this.transpose ? x : y);
     const width = this.transpose ? h : w;
     const depth = this.transpose ? w : h;
     this.add(
-      { kind: 'rect', x: left, y: top, w: width, h: depth },
+      { kind: 'rect', x: left, y: top, w: width, h: depth, ...(edge && { edge }) },
       left,
       top,
       left + width,

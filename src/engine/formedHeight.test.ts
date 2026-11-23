@@ -15,6 +15,15 @@ function fixture(draw: (pen: SurfacePen) => void, size = 512, band = size) {
 }
 
 describe('formed mechanical relief', () => {
+  it.each([512, 513, 517])('joins square-edged terrain cells without a groove at size %i', (size) => {
+    const tile = fixture((pen) => {
+      pen.rect(0, 0, 512, TILE, 94, undefined, 'square');
+      pen.rect(512, 0, 512, TILE, 136, undefined, 'square');
+    }, size);
+    const row = tile.subarray(Math.floor(size / 2) * size, (Math.floor(size / 2) + 1) * size);
+    expect(row.every((value, x) => value === (x + 0.5 < size / 2 ? 94 : 136) * 257)).toBe(true);
+  });
+
   it('gives a tube a continuous crown with opposed slopes and a flat mounting surface', () => {
     const draw = (p: SurfacePen) => p.path([-50, 512, 1074, 512], 64, undefined, 160, { kind: 'tube', rise: 34 });
     const h = fixture(draw);

@@ -150,3 +150,30 @@ test('saves a named material and recalls its authored properties from the librar
   await expect(density).toHaveValue('71.4');
   await expect(page.getByLabel('Style', { exact: true })).toHaveValue('electrical');
 });
+
+test('Displacement loads from the library, renders height and downloads its portable recipe', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Displacement', exact: true }).click();
+  const style = page.getByLabel('Style', { exact: true });
+  await expect(style).toHaveValue('displacement');
+  const pendingFile = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download recipe JSON', exact: true }).click();
+  const recipe = await readRecipe(await pendingFile);
+  const factory = await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8');
+  expect(recipe).toEqual(parseGenerationRecipe(factory));
+  const draft = { ...recipe, params: { ...recipe.params, resolution: 512 } };
+  await expect(page.locator('canvas[data-material-id]')).toHaveAttribute(
+    'data-material-id',
+    getGenerationRecipeId(draft),
+    { timeout: 30_000 },
+  );
+  await page
+    .getByRole('group', { name: 'Texture channel' })
+    .getByRole('button', { name: 'Height', exact: true })
+    .click();
+  await expect(page.getByRole('img', { name: 'height map', exact: true })).toHaveJSProperty('naturalWidth', 512);
+  await page.getByLabel('Renderer', { exact: true }).selectOption('1');
+  await expect(style).toHaveValue('tech');
+  await expect(style.locator('option[value="displacement"]')).toHaveCount(0);
+});

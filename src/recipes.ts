@@ -1,6 +1,11 @@
 export const GENERATION_RECIPE_VERSION = 2 as const;
 export type RecipeVersion = 1 | typeof GENERATION_RECIPE_VERSION;
-export type GenerationStyle = 'tech' | 'electrical';
+export type GenerationStyle = 'tech' | 'electrical' | 'displacement';
+export const styleNames: Record<GenerationStyle, string> = {
+  tech: 'Tech',
+  electrical: 'Electrical',
+  displacement: 'Displacement',
+};
 export const hardwarePatterns = [
   'iris',
   'coupling',
@@ -80,8 +85,8 @@ function validPanelOverrides(value: unknown) {
 export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
   if (!isRecord(value) || (value.version !== 1 && value.version !== 2) || !isRecord(value.params)) return false;
   const p = value.params;
-  if (p.style !== 'tech' && p.style !== 'electrical') return false;
   const legacy = value.version === 1;
+  if (p.style !== 'tech' && p.style !== 'electrical' && (legacy || p.style !== 'displacement')) return false;
   if (!(legacy ? Number.isFinite(p.seed) : Number.isSafeInteger(p.seed))) return false;
   if (!Number.isInteger(p.resolution) || !inRange(p.resolution, 1, 8192)) return false;
   if (![p.largeDensity, p.mediumDensity, p.smallDensity].every((v) => inRange(v, 0, 1))) return false;
@@ -163,6 +168,8 @@ export function convertRecipeVersion(recipe: GenerationRecipe, version: RecipeVe
   if (version === 2) {
     params.seed = Math.trunc(Math.max(Number.MIN_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, params.seed))) || 0;
     params.palette = params.palette.map((color) => (color.startsWith('#') ? color : `#${color}`));
+  } else if (params.style === 'displacement') {
+    params.style = 'tech';
   }
   return createGenerationRecipe(params, version);
 }
