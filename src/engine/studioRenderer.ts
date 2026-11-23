@@ -41,9 +41,11 @@ export function newWriters(size: number, native = false): StudioMaps<StripPng> {
 
 export interface PreviewSource {
   field: ReliefField;
+  albedo: Uint8Array;
   ao: Uint8Array;
   rough: Uint8Array;
   metal: Uint8Array;
+  dustCoverage?: Uint8Array;
 }
 
 export interface PreviewBake {
@@ -69,17 +71,46 @@ function finishSettings(params: GenerationParams) {
             target <= midpoint ? (base * target) / midpoint : 255 - ((255 - base) * (255 - target)) / (255 - midpoint),
           ),
         );
-  return { rough, metal: params.metalness === undefined ? undefined : Math.round(params.metalness * 255) };
+  return {
+    rough,
+    metal: params.metalness === undefined ? undefined : Math.round(params.metalness * 255),
+    dust: params.cavityDust ?? 0,
+  };
 }
 
+// Albedo is encoded sRGB. Mix fractional pigment coverage in linear reflectance.
+const linearAlbedo = Float32Array.from({ length: 256 }, (_, byte) => {
+  const v = byte / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+});
+const encodedAlbedo = Uint8Array.from({ length: 4097 }, (_, index) => {
+  const v = index / 4096;
+  return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
+});
+const dustAlbedo = [linearAlbedo[151], linearAlbedo[132], linearAlbedo[107]];
+
 function packFinish(
-  maps: Pick<StudioMaps<Uint8Array>, 'ao' | 'roughness' | 'metalness' | 'orm'>,
+  maps: Pick<StudioMaps<Uint8Array>, 'ao' | 'roughness' | 'metalness' | 'orm'> & { albedo?: Uint8Array },
   settings: ReturnType<typeof finishSettings>,
+  dustCoverage?: Uint8Array,
 ) {
-  const { ao, roughness, metalness, orm } = maps;
+  const { ao, roughness, metalness, orm, albedo } = maps;
   if (settings.metal !== undefined) metalness.fill(settings.metal);
   for (let i = 0; i < ao.length; i++) {
     if (settings.rough) roughness[i] = settings.rough[roughness[i]];
+    if (dustCoverage?.[i]) {
+      const amount = (dustCoverage[i] / 255) * settings.dust;
+      // The dielectric dust sits over the authored substrate, even over solid metal.
+      roughness[i] = Math.round(roughness[i] + amount * (239 - roughness[i]));
+      metalness[i] = Math.round(metalness[i] * (1 - amount));
+      if (albedo) {
+        for (let c = 0; c < 3; c++) {
+          const k = i * 3 + c;
+          const base = linearAlbedo[albedo[k]];
+          albedo[k] = encodedAlbedo[Math.round(4096 * (base + amount * (dustAlbedo[c] - base)))];
+        }
+      }
+    }
     orm[i * 3] = ao[i];
     orm[i * 3 + 1] = roughness[i];
     orm[i * 3 + 2] = metalness[i];
@@ -96,10 +127,12 @@ export async function revisePreview(
 ): Promise<PreviewBake> {
   const normal = params.normalStrength !== previous.params.normalStrength;
   const ao = params.aoStrength !== previous.params.aoStrength;
-  const rough = params.roughness !== previous.params.roughness;
-  const metal = params.metalness !== previous.params.metalness;
+  const dust = params.cavityDust !== previous.params.cavityDust;
+  const rough = dust || params.roughness !== previous.params.roughness;
+  const metal = dust || params.metalness !== previous.params.metalness;
   const orm = ao || rough || metal;
   const names: MapName[] = [];
+  if (dust) names.push('albedo');
   if (normal) names.push('normal');
   if (ao) names.push('ao');
   if (rough) names.push('roughness');
@@ -116,6 +149,9 @@ export async function revisePreview(
   const source = previous.source;
   const nextAO = ao ? new Uint8Array(size * size) : source.ao;
   const settings = finishSettings(params);
+  const dustCoverage = source.dustCoverage ?? (settings.dust ? new Uint8Array(size * size) : undefined);
+  const finish =
+    settings.dust && !source.dustCoverage ? new SurfaceFinish(size, params.finishSeed ?? params.seed) : undefined;
   const maps = { ...previous.maps };
   try {
     const bandRows = stripHeight(size);
@@ -135,13 +171,15 @@ export async function revisePreview(
         }
       }
       if (orm) {
+        if (finish) dustCoverage?.set(source.field.dustCoverage(top, rows, finish), offset);
         const band = {
+          albedo: dust ? source.albedo.slice(offset * 3, (offset + count) * 3) : undefined,
           ao: nextAO.subarray(offset, offset + count),
           roughness: source.rough.slice(offset, offset + count),
           metalness: source.metal.slice(offset, offset + count),
           orm: new Uint8Array(count * 3),
         };
-        packFinish(band, settings);
+        packFinish(band, settings, settings.dust ? dustCoverage?.subarray(offset, offset + count) : undefined);
         Object.assign(output, band);
       }
       await Promise.all(
@@ -157,7 +195,7 @@ export async function revisePreview(
     }
     signal?.throwIfAborted();
     for (const { name, png } of encoders) maps[name] = png.blob();
-    return { key: previous.key, source: ao ? { ...source, ao: nextAO } : source, params, maps };
+    return { key: previous.key, source: { ...source, ao: nextAO, dustCoverage }, params, maps };
   } finally {
     for (const { png } of encoders) png.dispose();
   }
@@ -189,9 +227,11 @@ export function* renderStudio(
   const retained = capture
     ? {
         field,
+        albedo: new Uint8Array(size * size * 3),
         ao: new Uint8Array(size * size),
         rough: new Uint8Array(size * size),
         metal: new Uint8Array(size * size),
+        dustCoverage: settings.dust ? new Uint8Array(size * size) : undefined,
       }
     : undefined;
   const first = makeCanvas(size, bandRows);
@@ -251,12 +291,15 @@ export function* renderStudio(
         params.aoStrength ?? 1,
         params.wear ?? 0.35,
       );
+      const coverage = settings.dust ? field.dustCoverage(top, rows, finish) : undefined;
       if (retained) {
+        retained.albedo.set(band.albedo, top * size * 3);
+        if (coverage) retained.dustCoverage?.set(coverage, top * size);
         retained.ao.set(band.ao, top * size);
         retained.rough.set(band.roughness, top * size);
         retained.metal.set(band.metalness, top * size);
       }
-      if (settings.rough || settings.metal !== undefined) packFinish(band, settings);
+      if (settings.rough || settings.metal !== undefined || coverage) packFinish(band, settings, coverage);
       const pending = [];
       for (const name of mapNames) {
         const write = writers[name].write(band[name], rows);

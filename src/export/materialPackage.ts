@@ -5,6 +5,7 @@ import { exportTargets, mapChannels, type BakedMaterial, type ExportTarget } fro
 import { engineProfile } from './engineProfiles.ts';
 import { buildProfileTexture } from './profileTexture.ts';
 import { materialSwatch } from './materialSwatch.ts';
+import { usdImportGuide, usdSwatch } from './usdSwatch.ts';
 
 export { materialPackageName, type CompletedMaterial } from './materialMaps.ts';
 
@@ -82,6 +83,13 @@ async function addEngineFiles(
   signal?: AbortSignal,
 ) {
   if (target === 'gltf') return {};
+  if (target === 'openusd') {
+    files.set('IMPORT.md', new Blob([usdImportGuide], { type: 'text/markdown' }));
+    return {
+      importGuide: 'IMPORT.md',
+      importSettings: { shader: 'UsdPreviewSurface', materialPrim: '/Greebler/Material', uvPrimvar: 'st' },
+    };
+  }
   const size = recipe.params.resolution;
   const { source, derivedFile, guide, importSettings } = engineProfile(target, size, recipe.params.specularIntensity);
   const converted = await buildProfileTexture(blobs[source], size, target, signal);
@@ -124,6 +132,7 @@ export async function buildMaterialPackage(
   const specular = recipe.version === 2 ? recipe.params.specularIntensity : undefined;
   const files = new Map<string, Blob>();
   const profile = await addEngineFiles(files, target, { recipe, blobs }, signal);
+  const materialFile = target === 'openusd' ? 'material.usda' : 'material.gltf';
   const metadata = new Map<string, Blob>([
     ['recipe.json', new Blob([serializeGenerationRecipe(recipe), '\n'], { type: 'application/json' })],
     [
@@ -134,7 +143,7 @@ export async function buildMaterialPackage(
         ...profile,
         recipeId: id,
         recipe: 'recipe.json',
-        material: 'material.gltf',
+        material: materialFile,
         workflow: 'metallic-roughness',
         ...(specular !== undefined && { specularIntensity: specular }),
         normalEncoding: recipe.version === 1 ? 'greebler-v1-gradient' : 'tangent-space-opengl-positive-y',
@@ -149,7 +158,12 @@ export async function buildMaterialPackage(
         maps: Object.fromEntries(maps),
       }),
     ],
-    ['material.gltf', jsonFile(materialSwatch(id, recipe.version !== 1, specular))],
+    [
+      materialFile,
+      target === 'openusd'
+        ? new Blob([usdSwatch(id, specular)], { type: 'text/plain' })
+        : jsonFile(materialSwatch(id, recipe.version !== 1, specular)),
+    ],
   ]);
   for (const [path, file] of metadata) files.set(path, file);
   for (const { key } of mapChannels) files.set(`maps/${key}.png`, blobs[key]);

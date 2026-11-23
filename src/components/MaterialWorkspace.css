@@ -424,7 +424,8 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 37px minmax(0, 1fr) 35px;
+  grid-template-rows: 37px minmax(0, 1fr) auto;
+  container: map-inspector / inline-size;
   background: #202226;
 }
 .mw-map-head,
@@ -500,12 +501,115 @@
   margin: auto;
 }
 .mw-map-foot {
+  height: 35px;
   background: #1b1d20;
   border-top: 1px solid #34373b;
 }
 .mw-map-foot span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.mw-map-tools,
+.mw-probe-toggle,
+.mw-probe-row,
+.mw-probe-axis {
+  display: flex;
+  align-items: center;
+}
+.mw-map-tools {
+  gap: 5px;
+}
+.material-workspace .mw-probe-toggle {
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #b4b8bd;
+  font-size: 11px;
+}
+.mw-probe-toggle:hover,
+.material-workspace .mw-probe-toggle[aria-pressed="true"] {
+  color: var(--ui-accent, #ffae58);
+  background: #332d26;
+  border-color: #71583e;
+}
+.mw-tile-cell,
+.mw-native-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.mw-tile-cell {
+  overflow: hidden;
+}
+.mw-native-tile {
+  overflow: hidden;
+  margin-inline: auto;
+}
+.mw-map[data-probe="true"] img {
+  cursor: crosshair;
+}
+.mw-probe-mark {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border: 1px solid #ffb666;
+  box-shadow:
+    inset 0 0 0 1px #191a1a,
+    0 0 0 1px #191a1a;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.mw-probe-mark::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #ffc182;
+  box-shadow: 0 0 0 1px #191a1a;
+}
+.mw-probe-readout {
+  padding: 6px 12px;
+  border-top: 1px solid #45433f;
+  background: #272727;
+  font: 10px var(--font-mono, monospace);
+}
+.mw-probe-row {
+  flex-wrap: wrap;
+  gap: 5px 9px;
+}
+.mw-probe-axis {
+  gap: 4px;
+  color: #c2c0bc;
+}
+.mw-probe-axis input {
+  width: 55px;
+  border: 1px solid #47484a;
+  background: #1c1e20;
+  border-radius: 3px;
+  color: #eee;
+  padding: 3px;
+  font: inherit;
+}
+.mw-probe-readout output {
+  color: #ffd3a7;
+  white-space: pre-wrap;
+}
+.mw-probe-scale {
+  display: block;
+  margin-top: 4px;
+  color: #b8babd;
+}
+@container map-inspector (max-width: 300px) {
+  .mw-probe-toggle span {
+    display: none;
+  }
+  .mw-map-head,
+  .mw-map-foot {
+    padding-inline: 6px;
+  }
 }
 .mw-shelf {
   min-width: 0;

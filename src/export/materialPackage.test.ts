@@ -71,11 +71,50 @@ it('preserves legacy normals as a source map and omits them from the glTF materi
   const files = unzipSync(new Uint8Array(await bundle.arrayBuffer()));
   expect(parse(files['manifest.json']).normalEncoding).toBe('greebler-v1-gradient');
   expect(parse(files['manifest.json']).maps.normal.channels.RGB).toBe('greeblerV1Gradient');
-  for (const target of ['unreal', 'unity-hdrp'] as const) {
+  for (const target of ['unreal', 'unity-hdrp', 'openusd'] as const) {
     await expect(buildMaterialPackage({ recipe: v1, blobs }, undefined, target)).rejects.toThrow('v2');
   }
   expect(parse(files['material.gltf']).materials[0]).not.toHaveProperty('normalTexture');
   expect(files['maps/normal.png']).toEqual(new Uint8Array(await blobs.normal.arrayBuffer()));
+});
+
+it('binds the source maps to an OpenUSD swatch with separate normal and physical displacement variants', async () => {
+  const authored = { ...recipe, params: { ...recipe.params, specularIntensity: 0.25 } };
+  const archive = await buildMaterialPackage({ recipe: authored, blobs }, undefined, 'openusd');
+  const files = unzipSync(new Uint8Array(await archive.arrayBuffer()));
+  const manifest = parse(files['manifest.json']);
+  expect(manifest.target).toBe('openusd');
+  expect(manifest.material).toBe('material.usda');
+  expect(materialPackageName(authored, 'openusd')).toMatch(/-openusd\.zip$/);
+  expect(files[manifest.importGuide]).toBeDefined();
+  const stage = new TextDecoder().decode(files[manifest.material]);
+  expect(stage).toContain('#usda 1.0');
+  expect(stage).toContain(`rel material:binding = <${manifest.importSettings.materialPrim}>`);
+  expect(stage).toContain('string reliefMode = "normal"');
+  const sourceMaps = Array.from(stage.matchAll(/asset inputs:file = @\.\/(maps\/\w+\.png)@/g), ([, path]) => path);
+  expect(sourceMaps).toEqual(['maps/albedo.png', 'maps/orm.png', 'maps/normal.png', 'maps/height.png']);
+  for (const { key } of mapChannels) {
+    expect(files[manifest.maps[key].file]).toEqual(new Uint8Array(await blobs[key].arrayBuffer()));
+  }
+  for (const [port, output] of Object.entries({
+    diffuseColor: 'Albedo.outputs:rgb',
+    occlusion: 'ORM.outputs:r',
+    roughness: 'ORM.outputs:g',
+    metallic: 'ORM.outputs:b',
+    normal: 'Normal.outputs:rgb',
+    displacement: 'Height.outputs:r',
+  })) {
+    expect(stage).toContain(`inputs:${port}.connect = <${manifest.importSettings.materialPrim}/${output}>`);
+  }
+  expect(stage).toContain('@./maps/albedo.png@\n            token inputs:sourceColorSpace = "sRGB"');
+  expect(stage.match(/inputs:sourceColorSpace = "raw"/g)).toHaveLength(3);
+  expect(stage).toContain('inputs:scale = (2, 2, 2, 1)');
+  expect(stage).toContain('inputs:bias = (-1, -1, -1, 0)');
+  const heightScale = manifest.relief.heightRangePerTileWidthAtUnitNormalStrength;
+  expect(stage).toContain(`inputs:scale = (${heightScale}, 1, 1, 1)`);
+  expect(stage).toContain(`inputs:bias = (${-0.5 * heightScale}, 0, 0, 0)`);
+  const ior = Number(stage.match(/float inputs:ior = ([\d.]+)/)?.[1]);
+  expect(((ior - 1) / (ior + 1)) ** 2).toBeCloseTo(0.04 * authored.params.specularIntensity, 6);
 });
 
 it('rejects mismatched map dimensions, invalid PNGs and canceled requests', async () => {

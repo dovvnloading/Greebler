@@ -78,6 +78,11 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
       const freshCoating = await signatures(coated);
       // Retain the original per-pixel finish even when a worker first saw the authored coating.
       const restored = await signatures(colored);
+      const dusty = { ...coated, params: { ...coated.params, cavityDust: 0.9 } };
+      const dustEdit = await signatures(dusty);
+      releaseIdleWorker();
+      const freshDust = await signatures(dusty);
+      const cleaned = await signatures(coated);
       return {
         base,
         revised,
@@ -96,6 +101,9 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
         specularEdit,
         freshCoating,
         restored,
+        dustEdit,
+        freshDust,
+        cleaned,
       };
     } finally {
       releaseIdleWorker();
@@ -129,6 +137,13 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
   expect(specularEdit.hashes).toEqual(coatedEdit.hashes);
   expect(restored.stage).toBe('Updating finish');
   expect(restored.hashes).toEqual(paletteEdit.hashes);
+  expect(frames.dustEdit.stage).toBe('Updating finish');
+  expect(frames.dustEdit.hashes).toEqual(frames.freshDust.hashes);
+  for (const key of ['height', 'normal', 'ao'] as const)
+    expect(frames.dustEdit.hashes[key]).toBe(coatedEdit.hashes[key]);
+  for (const key of ['albedo', 'roughness', 'metalness', 'orm'] as const)
+    expect(frames.dustEdit.hashes[key]).not.toBe(coatedEdit.hashes[key]);
+  expect(frames.cleaned.hashes).toEqual(coatedEdit.hashes);
 });
 
 test('legacy jobs retain HTML canvas PNGs and can cancel during subdivision', async ({ page }) => {

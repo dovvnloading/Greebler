@@ -78,6 +78,7 @@ export interface GenerationParams {
   normalStrength?: number;
   aoStrength?: number;
   wear?: number;
+  cavityDust?: number;
   metalness?: number;
   roughness?: number;
   specularIntensity?: number;
@@ -128,6 +129,7 @@ export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
       (p.normalStrength === undefined || inRange(p.normalStrength, 0, 4)) &&
       (p.aoStrength === undefined || inRange(p.aoStrength, 0, 2)) &&
       (p.wear === undefined || inRange(p.wear, 0, 1)) &&
+      (p.cavityDust === undefined || inRange(p.cavityDust, 0, 1)) &&
       (p.metalness === undefined || inRange(p.metalness, 0, 1)) &&
       (p.roughness === undefined || inRange(p.roughness, 0, 1)) &&
       (p.specularIntensity === undefined || inRange(p.specularIntensity, 0, 1)))
@@ -166,6 +168,7 @@ export function cloneGenerationRecipe(recipe: GenerationRecipe): GenerationRecip
       normalStrength: p.normalStrength ?? DEFAULT_FINISH.normalStrength,
       aoStrength: p.aoStrength ?? DEFAULT_FINISH.aoStrength,
       wear: p.wear ?? DEFAULT_FINISH.wear,
+      ...(p.cavityDust ? { cavityDust: p.cavityDust } : {}),
       ...(p.metalness === undefined ? {} : { metalness: p.metalness }),
       ...(p.roughness === undefined ? {} : { roughness: p.roughness }),
       ...(p.specularIntensity === undefined ? {} : { specularIntensity: p.specularIntensity }),

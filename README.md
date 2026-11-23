@@ -14,6 +14,18 @@ Greebler is a procedural hard-surface material editor. Build repeating service p
 
 Drag a divider to resize either dock. With a divider focused, the arrow keys adjust its width and Home resets it. Dock widths and visibility survive reload. On narrow screens, the Library and Properties buttons open sheets. **Shift+Space** toggles focus mode, **Ctrl/⌘ K** finds materials, and **Ctrl/⌘ Enter** bakes. The keyboard button in the status bar lists the other commands.
 
+## Material review
+
+Choose [Salvage deck](examples/salvage-deck.json) in the material library for patinated panels with exposed edges and dust in the joints. **Cavity dust** in **Properties → Surface finish** deposits a matte, warm-colored layer in sheltered joints and recesses. The control changes albedo, roughness and metalness together. The comparison below uses the same seed and studio lighting at 0% and 90% dust. The height, normals and ambient occlusion stay identical.
+
+![Matched material renders with a clean finish on the left and dust collected in recesses on the right](docs/cavity-dust.webp)
+
+Open **Lighting environment** beside the shading menu to load a local 2:1 Radiance RGBE panorama (.hdr, 64 to 8192 pixels wide). Use **Light angle** to rotate it and **Exposure** to adjust the view in quarter stops. Leave raking light off to evaluate the panorama on its own. **Reset studio** restores the softboxes, starting light angle and zero exposure. **Save viewport render** downloads a 2K PNG of the framed material, including the selected lighting. These settings belong to the viewport session.
+
+Open a texture and turn on **Texel probe**. Click a point or enter X and Y, measured from the upper left of the exported PNG. Switch maps to read the corresponding albedo, normal or packed ORM values. Studio height reads the 16-bit source and reports signed millimeters from mid-gray for a one-meter tile, even when the 3D preview uses smaller textures.
+
+The [material authoring review](docs/material-authoring.md) records the original gaps and the checks for each upgrade.
+
 ## Displacement
 
 Choose **Displacement** in the material library for a classic sci-fi height field. Broad terraces meet at stepped joints. Recessed service strips carry traces and sockets, and a few square towers rise above the plates. Change the main seed for a new tile or the component detail seed to vary the fittings within the same layout. [Download the 2048 px recipe](examples/displacement.json)
@@ -36,7 +48,7 @@ On the 2048 px **Displacement** plane (seed 3894), the adaptive mesh used 479,72
 
 ## Hardware patterns
 
-Five factory materials mix fittings across their panels. **Service deck** draws from all nine hardware patterns. **Relay board** combines terminals, controllers, harnesses, cartridges and actuators. **Mechanical bay** pairs actuators and trusses with shutters, harnesses and cartridges. **Thermal plant** mixes exchangers, intakes, radiators, harnesses and actuators. **Avionics rack** fits waveguides and optics alongside cartridges, controllers, wiring and terminals.
+Six factory materials mix fittings across their panels. **Service deck** and **Salvage deck** draw from all nine hardware patterns. **Relay board** combines terminals, controllers, harnesses, cartridges and actuators. **Mechanical bay** pairs actuators and trusses with shutters, harnesses and cartridges. **Thermal plant** mixes exchangers, intakes, radiators, harnesses and actuators. **Avionics rack** fits waveguides and optics alongside cartridges, controllers, wiring and terminals.
 
 ![Three mixed hardware materials and three finishes on the same Displacement tile](docs/material-variations.webp)
 
@@ -79,12 +91,13 @@ These Blender Cycles renders show the original service deck and relay board reci
 | Package target | What to import |
 | --- | --- |
 | glTF 2.0 | Extract the archive and open `material.gltf` alongside `maps/`. It binds base color, tangent-space normals and packed metallic/roughness/occlusion on a UV swatch. Height is supplied separately. |
+| OpenUSD | Extract the archive and open `material.usda`. The one-meter swatch has a bound UsdPreviewSurface material. Choose its `displacement` variant for render delegates with tessellation, or use the default `normal` variant for the baked tangent-space normal. |
 | Unreal Engine | Use the included DirectX normal with green flip disabled. Import ORM as Masks with sRGB disabled. Wire red to Ambient Occlusion, green to Roughness and blue to Metallic. |
 | Unity HDRP | Assign base color, the +Y normal and the HDRP Mask Map to an HDRP/Lit material. Mask RGBA carries metallic, occlusion, full detail coverage and inverse roughness. Preserve the input alpha and use linear sampling. |
 
 An authored **Specular level** travels in the glTF swatch through `KHR_materials_specular`, in the Blender material’s Specular IOR Level and in the Unreal import guide. Unity HDRP/Lit Standard uses a fixed dielectric reflectance. Matching a custom specular level there requires a compatible shader.
 
-Every ZIP includes the source PNGs, a canonical recipe and a manifest recording pixel format, bit depth, channel bindings, relief scale and recipe ID. The engine-specific packages also include the converted texture and import instructions. [Khronos glTF material reference](https://github.com/KhronosGroup/glTF/tree/main/specification/2.0#materials) · [Unreal texture masks](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-texture-masks-in-unreal-engine) · [Unity HDRP mask maps](https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/Mask-Map-and-Detail-Map.html)
+Every ZIP includes the source PNGs, a canonical recipe and a manifest recording pixel format, bit depth, channel bindings, relief scale and recipe ID. The Unreal and HDRP packages include converted textures and import instructions. The OpenUSD layer references the source PNGs directly. [Khronos glTF material reference](https://github.com/KhronosGroup/glTF/tree/main/specification/2.0#materials) · [Unreal texture masks](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-texture-masks-in-unreal-engine) · [Unity HDRP mask maps](https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/Mask-Map-and-Detail-Map.html)
 
 ## Bake from the command line
 
@@ -96,6 +109,7 @@ npx playwright install chromium
 npm run bake -- --out bakes examples/service-deck.json examples/relay-board.json
 npm run bake -- --target unity-hdrp --metrics --out bakes examples/relay-board.json
 npm run bake -- --target unreal --out bakes examples/service-deck.json
+npm run bake -- --target openusd --out bakes examples/service-deck.json
 ```
 
 Use `--force` to replace existing outputs. Set `GREEBLER_CHROMIUM_EXECUTABLE` to use a locally installed Chromium. For repeatable pixel comparisons across machines, pin the browser and raster environment alongside the recipe. `--metrics` reports bake time, the longest gap in a 16 ms browser timer during the bake, package time, ZIP bytes and total time through disk write.

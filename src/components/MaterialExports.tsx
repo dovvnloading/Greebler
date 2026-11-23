@@ -141,13 +141,9 @@ export function MaterialExports({
             ))}
           </select>
           <p>
-            {target === 'unreal'
-              ? 'Includes the DirectX normal, ORM and Unreal import settings.'
-              : target === 'unity-hdrp'
-                ? 'Includes an HDRP mask map and import settings.'
-                : material?.recipe.version === 1
-                  ? 'Seven source maps and a glTF swatch. Engine profiles require a v2 normal bake.'
-                  : 'Includes the glTF swatch, source maps, recipe and channel metadata.'}
+            {material?.recipe.version === 1
+              ? 'Seven source maps and a glTF swatch. Engine profiles require a v2 normal bake.'
+              : exportTargets.find(({ key }) => key === target)?.description}
           </p>
           <button
             type="button"

@@ -15,7 +15,7 @@ const { validateBytes } = createRequire(import.meta.url)('gltf-validator') as {
   ): Promise<{ issues: { messages: unknown[]; numErrors: number; numWarnings: number } }>;
 };
 
-test('inspects seven channels and exports the displayed bake for glTF, Unreal and HDRP', async ({ page }) => {
+test('inspects seven channels and exports the displayed bake for all package targets', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.getContext, {
@@ -81,7 +81,7 @@ test('inspects seven channels and exports the displayed bake for glTF, Unreal an
   expect(result.issues.numErrors, JSON.stringify(result.issues.messages)).toBe(0);
   expect(result.issues.numWarnings, JSON.stringify(result.issues.messages)).toBe(0);
 
-  for (const target of ['unreal', 'unity-hdrp'] as const) {
+  for (const target of ['unreal', 'unity-hdrp', 'openusd'] as const) {
     await page.getByLabel('Export target').selectOption(target);
     const pendingProfile = page.waitForEvent('download');
     await download.click();
@@ -96,6 +96,11 @@ test('inspects seven channels and exports the displayed bake for glTF, Unreal an
     expect(profile.recipeId).toBe(manifest.recipeId);
     for (const [key, hash] of Object.entries(hashes)) {
       expect(createHash('sha256').update(profileFiles[profile.maps[key].file]).digest('hex')).toBe(hash);
+    }
+    if (target === 'openusd') {
+      expect(profile.material).toBe('material.usda');
+      expect(new TextDecoder().decode(profileFiles[profile.material])).toContain('UsdPreviewSurface');
+      continue;
     }
     for (const texture of Object.values(profile.importSettings.textures) as { file: string }[]) {
       expect(profileFiles[texture.file]).toBeDefined();

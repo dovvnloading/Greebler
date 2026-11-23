@@ -1,7 +1,7 @@
 import { Vector2, type Camera, type Scene, type WebGLRenderer } from 'three';
 import { canvasBlob } from '../engine/canvas';
 
-/** Snapshot the current camera and refined mesh at 2K, using the viewport's lighting and color pipeline. */
+/** Snapshot the current camera and material at 2K, using the viewport's lighting and color pipeline. */
 export function renderStill(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
   const context = renderer.getContext();
   if (context.isContextLost()) throw new Error('The graphics context was lost. Try again when the viewport returns.');

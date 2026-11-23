@@ -128,10 +128,58 @@ function horizonTable(radius: number, resolution: number) {
   return table;
 }
 
+// Separable box mean over the periodic tile. Sliding column sums avoid copying
+// a full blurred height map or multiplying bake cost by the footprint area.
+class PeriodicHeightWindow {
+  private readonly columns: Uint32Array;
+  private currentRow = -1;
+  constructor(
+    private readonly heights: Uint16Array,
+    private readonly size: number,
+    private readonly radius: number,
+    private readonly left: Int32Array,
+    private readonly right: Int32Array,
+  ) {
+    this.columns = new Uint32Array(size);
+  }
+
+  accumulate(top: number, rows: number, shelter: Float32Array, deadband: number, range: number, weight: number) {
+    const heights = this.heights;
+    const columns = this.columns;
+    const size = this.size;
+    const radius = this.radius;
+    const area = (2 * radius + 1) ** 2;
+    for (let row = 0; row < rows; row++) {
+      const y = top + row;
+      if (this.currentRow >= 0 && y === this.currentRow + 1) {
+        const leaving = wrap(y - radius - 1, size) * size;
+        const entering = wrap(y + radius, size) * size;
+        for (let x = 0; x < size; x++) columns[x] += heights[entering + x] - heights[leaving + x];
+      } else {
+        columns.fill(0);
+        for (let dy = -radius; dy <= radius; dy++) {
+          const offset = wrap(y + dy, size) * size;
+          for (let x = 0; x < size; x++) columns[x] += heights[offset + x];
+        }
+      }
+      this.currentRow = y;
+      let sum = 0;
+      for (let dx = -radius; dx <= radius; dx++) sum += columns[wrap(dx, size)];
+      for (let x = 0; x < size; x++) {
+        const depth = sum / area - heights[y * size + x];
+        shelter[row * size + x] += weight * Math.max(0, Math.min(1, (depth - deadband) / range));
+        const next = x + 1 === size ? 0 : x + 1;
+        sum += columns[this.right[next]] - columns[this.left[x]];
+      }
+    }
+  }
+}
+
 export class ReliefField {
   readonly size: number;
   readonly near: number;
   private far: number;
+  private dustWindows?: [PeriodicHeightWindow, PeriodicHeightWindow];
   private nearHorizon: Float32Array;
   private farHorizon: Float32Array;
   private nearDiagonal?: Float32Array;
@@ -172,6 +220,27 @@ export class ReliefField {
       farNorth: wrap(y - this.far, n) * n,
       farSouth: wrap(y + this.far, n) * n,
     };
+  }
+
+  dustCoverage(top: number, rows: number, finish: SurfaceFinish) {
+    const n = this.size;
+    this.dustWindows ??= [
+      new PeriodicHeightWindow(this.heights, n, this.near, this.left, this.right),
+      new PeriodicHeightWindow(this.heights, n, this.far, this.farLeft, this.farRight),
+    ];
+    const shelter = new Float32Array(rows * n);
+    // Mean surrounding height minus the surface height cancels planar ramps.
+    // The deadbands reject fine coating grain on otherwise level stock.
+    this.dustWindows[0].accumulate(top, rows, shelter, 200, 5000, 0.58);
+    this.dustWindows[1].accumulate(top, rows, shelter, 400, 9000, 0.42);
+    const coverage = new Uint8Array(rows * n);
+    for (let row = 0; row < rows; row++) {
+      for (let x = 0; x < n; x++) {
+        const i = row * n + x;
+        if (shelter[i] > 0) coverage[i] = clampByte(255 * shelter[i] * (0.25 + 0.75 * finish.coating(x, top + row)));
+      }
+    }
+    return coverage;
   }
 
   // Integrate the horizon at two material-space radii. Formed surfaces include all
