@@ -115,6 +115,8 @@ def create_material(manifest, recipe, paths, tile_width):
         return item.outputs['Color']
 
     bsdf = node('ShaderNodeBsdfPrincipled', 'Metallic / Roughness', 0, 380)
+    if 'specularIntensity' in manifest:
+        bsdf.inputs['Specular IOR Level'].default_value = 0.5 * manifest['specularIntensity']
     output = node('ShaderNodeOutputMaterial', 'Material Output', 360, 380)
     link(bsdf.outputs['BSDF'], output.inputs['Surface'])
     link(texture('albedo', 600), bsdf.inputs['Base Color'])

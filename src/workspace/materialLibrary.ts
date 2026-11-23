@@ -1,22 +1,10 @@
-import iris from '../../examples/iris.json';
-import coupling from '../../examples/coupling.json';
-import truss from '../../examples/truss.json';
-import exchanger from '../../examples/exchanger.json';
-import harness from '../../examples/harness.json';
-import filter from '../../examples/filter.json';
-import waveguide from '../../examples/waveguide.json';
-import cassette from '../../examples/cassette.json';
-import sensor from '../../examples/sensor.json';
+import mechanicalBay from '../../examples/mechanical-bay.json';
+import thermalPlant from '../../examples/thermal-plant.json';
+import avionicsRack from '../../examples/avionics-rack.json';
 import displacement from '../../examples/displacement.json';
 import serviceDeck from '../../examples/service-deck.json';
 import relayBoard from '../../examples/relay-board.json';
-import {
-  componentLabels,
-  hardwarePatterns,
-  isGenerationRecipe,
-  parseGenerationRecipe,
-  type GenerationRecipe,
-} from '../recipes';
+import { isGenerationRecipe, parseGenerationRecipe, type GenerationRecipe } from '../recipes';
 
 export interface LibraryMaterial {
   id: string;
@@ -24,8 +12,6 @@ export interface LibraryMaterial {
   recipe: GenerationRecipe;
   image?: string;
 }
-
-const hardwareRecipes = { iris, coupling, truss, exchanger, harness, filter, waveguide, cassette, sensor };
 
 export const factoryMaterials: LibraryMaterial[] = [
   {
@@ -46,12 +32,24 @@ export const factoryMaterials: LibraryMaterial[] = [
     recipe: parseGenerationRecipe(JSON.stringify(displacement)),
     image: new URL('../assets/materials/displacement.webp', import.meta.url).href,
   },
-  ...hardwarePatterns.map((pattern) => ({
-    id: pattern,
-    name: componentLabels[pattern],
-    recipe: parseGenerationRecipe(JSON.stringify(hardwareRecipes[pattern])),
-    image: new URL(`../assets/materials/${pattern}.webp`, import.meta.url).href,
-  })),
+  {
+    id: 'mechanical-bay',
+    name: 'Mechanical bay',
+    recipe: parseGenerationRecipe(JSON.stringify(mechanicalBay)),
+    image: new URL('../assets/materials/mechanical-bay.webp', import.meta.url).href,
+  },
+  {
+    id: 'thermal-plant',
+    name: 'Thermal plant',
+    recipe: parseGenerationRecipe(JSON.stringify(thermalPlant)),
+    image: new URL('../assets/materials/thermal-plant.webp', import.meta.url).href,
+  },
+  {
+    id: 'avionics-rack',
+    name: 'Avionics rack',
+    recipe: parseGenerationRecipe(JSON.stringify(avionicsRack)),
+    image: new URL('../assets/materials/avionics-rack.webp', import.meta.url).href,
+  },
 ];
 
 const prefix = 'greebler.material-library.v1/';

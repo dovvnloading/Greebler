@@ -57,8 +57,8 @@ function neutralDetail(pixels: number[]) {
   return gray / (pixels.length / 4) > 0.92 && levels.size > 12;
 }
 
-async function loadPlate(page: Page) {
-  await page.setViewportSize({ width: 1040, height: 720 });
+async function loadPlate(page: Page, width = 1040) {
+  await page.setViewportSize({ width, height: 720 });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -175,6 +175,10 @@ test('mobile viewport keeps the mesh visible and frames it again after orbiting'
 });
 
 test('sub-polygon displacement refines the active swatch and restores the parallax preview', async ({ page }) => {
+  let meshBuilds = 0;
+  page.on('worker', (worker) => {
+    if (worker.url().includes('adaptiveMesh.worker')) meshBuilds++;
+  });
   const factory = await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8');
   const recipe = parseGenerationRecipe(factory);
   await page.addInitScript((json) => localStorage.setItem('greebler.editor.recipe', json), factory);
@@ -204,6 +208,13 @@ test('sub-polygon displacement refines the active swatch and restores the parall
   expect(png.length).toBeGreaterThan(32_000);
   expect(await canvas.evaluate((node: HTMLCanvasElement) => [node.width, node.height])).toEqual(originalSize);
   expect(differingPixels(refined, await sampleSurface(canvas))).toBeLessThan(0.03);
+  const previousBuilds = meshBuilds;
+  expect(previousBuilds).toBeGreaterThan(0);
+  await page.getByLabel('Material finish', { exact: true }).selectOption('Burnished copper');
+  await expect(canvas).not.toHaveAttribute('data-material-id', draftId);
+  await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive');
+  expect(meshBuilds).toBe(previousBuilds);
+  const copperId = await canvas.getAttribute('data-material-id');
   await page.getByRole('button', { name: 'Sphere', exact: true }).click();
   await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
   await page.getByRole('button', { name: 'Plate', exact: true }).click();
@@ -211,6 +222,31 @@ test('sub-polygon displacement refines the active swatch and restores the parall
   await button.click();
   await expect(canvas).toHaveAttribute('data-displacement-mode', 'preview');
   await expect(canvas).toHaveAttribute('data-surface-triangles', baseCount ?? '');
-  expect(await canvas.getAttribute('data-material-id')).toBe(draftId);
+  expect(await canvas.getAttribute('data-material-id')).toBe(copperId);
+  expect(errors).toEqual([]);
+});
+
+test('dielectric specular strength changes the lit Displacement finish at a fixed camera', async ({ page }) => {
+  const preset = JSON.parse(await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8'));
+  const recipe = parseGenerationRecipe(
+    JSON.stringify({
+      ...preset,
+      params: { ...preset.params, resolution: 512, metalness: 0, roughness: 0.22, specularIntensity: 1 },
+    }),
+  );
+  await page.addInitScript((json) => localStorage.setItem('greebler.editor.recipe', json), JSON.stringify(recipe));
+  const { canvas, errors } = await loadPlate(page, 1440);
+  await expect(canvas).toHaveAttribute('data-material-id', getGenerationRecipeId(recipe));
+  const lit = await sampleSurface(canvas);
+  const field = page.getByLabel('Specular level value', { exact: true });
+  await field.fill('0');
+  await field.press('Enter');
+  const unlitRecipe = { ...recipe, params: { ...recipe.params, specularIntensity: 0 } };
+  await expect(canvas).toHaveAttribute('data-material-id', getGenerationRecipeId(unlitRecipe));
+  await expect.poll(async () => differingPixels(lit, await sampleSurface(canvas), 2)).toBeGreaterThan(0.02);
+  await field.fill('100');
+  await field.press('Enter');
+  await expect(canvas).toHaveAttribute('data-material-id', getGenerationRecipeId(recipe));
+  await expect.poll(async () => differingPixels(lit, await sampleSurface(canvas), 4)).toBeLessThan(0.03);
   expect(errors).toEqual([]);
 });

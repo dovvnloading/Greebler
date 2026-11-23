@@ -1,4 +1,4 @@
-import type { GenerationRecipeParams } from '../recipes';
+import { type GenerationRecipeParams, hardwareMixes, isHardwareMix, type PanelComponent } from '../recipes';
 import { TILE } from './surfacePrimitives';
 
 // Every panel has its own random stream. Adding rivets or changing the palette does not move its neighbours.
@@ -16,6 +16,30 @@ export function hash(seed: number, index: number) {
 
 export function sample(seed: number, index: number) {
   return hash(seed, index) / 4294967296;
+}
+
+function pickHardware(pattern: GenerationRecipeParams['panelPattern'], detail: number) {
+  if (!isHardwareMix(pattern)) return pattern;
+  const families = hardwareMixes[pattern];
+  return families[Math.floor(sample(detail, 51) * families.length)];
+}
+
+/** The preview picker and all bake resolutions share these bay and fitting decisions. */
+export function planStudioBay(params: GenerationRecipeParams, seed: number, override?: PanelComponent) {
+  if (override) return { kind: 'panel', component: override } as const;
+  const detail = params.detailSeed === undefined ? seed : hash(seed, params.detailSeed);
+  if (params.style === 'displacement') {
+    const component = sample(seed, 9) < params.mediumDensity ? pickHardware(params.panelPattern, detail) : undefined;
+    return component ? ({ kind: 'panel', component } as const) : ({ kind: 'displacement' } as const);
+  }
+  if (sample(seed, 19) <= params.largeDensity) {
+    const component = sample(detail, 9) < params.mediumDensity ? pickHardware(params.panelPattern, detail) : undefined;
+    return { kind: 'panel', component } as const;
+  }
+  if (sample(seed, 20) < params.mediumDensity) {
+    return { kind: 'open', component: pickHardware(params.panelPattern, detail) } as const;
+  }
+  return { kind: 'backplane' } as const;
 }
 
 interface Rect {

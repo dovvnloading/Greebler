@@ -15,6 +15,9 @@ import type { CompletedMaterial } from '../export/materialMaps';
 import {
   componentLabels,
   hardwarePatterns,
+  isHardwareMix,
+  isPanelPattern,
+  mixLabels,
   convertRecipeVersion,
   createGenerationRecipe,
   DEFAULT_FINISH,
@@ -24,6 +27,7 @@ import {
   generationParamsFromRecipe,
   serializeGenerationRecipe,
 } from '../recipes';
+import { displacementFinishes, matchingDisplacementFinish } from '../workspace/displacementFinishes';
 import { NumberDial } from './NumberDial';
 import { PaletteEditor } from './PaletteEditor';
 import { PanelEditor } from './PanelEditor';
@@ -114,7 +118,16 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
           <select
             id="style-select"
             value={params.style}
-            onChange={(event) => edit('style', event.target.value as GenerationStyle)}
+            onChange={(event) => {
+              const style = event.target.value as GenerationStyle;
+              if (style === 'displacement' && isHardwareMix(params.panelPattern)) {
+                onChange(
+                  createGenerationRecipe({ ...generationParamsFromRecipe(recipe), style, panelPattern: undefined }, 2),
+                );
+              } else {
+                edit('style', style);
+              }
+            }}
           >
             <option value="tech">Tech Detail</option>
             <option value="electrical">Electrical</option>
@@ -129,16 +142,24 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
               value={params.panelPattern ?? ''}
               onChange={(event) => {
                 const value = event.target.value;
-                edit('panelPattern', value === 'mixed' ? value : hardwarePatterns.find((pattern) => pattern === value));
+                edit('panelPattern', isPanelPattern(value) ? value : undefined);
               }}
             >
               <option value="">Style default</option>
-              <option value="mixed">Mixed hardware</option>
-              {hardwarePatterns.map((pattern) => (
-                <option key={pattern} value={pattern}>
-                  {componentLabels[pattern]}
-                </option>
-              ))}
+              <optgroup label="Randomized mixes">
+                {Object.entries(mixLabels).map(([mix, label]) => (
+                  <option key={mix} value={mix}>
+                    {label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Single fitting">
+                {hardwarePatterns.map((pattern) => (
+                  <option key={pattern} value={pattern}>
+                    {componentLabels[pattern]}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
         )}
@@ -264,6 +285,69 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
       </Section>
       {studio && (
         <Section title="Surface finish" icon={<Waves size={14} aria-hidden="true" />}>
+          {params.style === 'displacement' && (
+            <div className="property-profile">
+              <label htmlFor="material-finish">Material finish</label>
+              <select
+                id="material-finish"
+                value={matchingDisplacementFinish(params)}
+                onChange={(event) => {
+                  const finish = displacementFinishes[event.target.value];
+                  if (finish)
+                    onChange(
+                      createGenerationRecipe(
+                        {
+                          ...generationParamsFromRecipe(recipe),
+                          palette: [...finish.palette],
+                          metalness: finish.metalness,
+                          roughness: finish.roughness,
+                          specularIntensity: finish.specularIntensity,
+                        },
+                        2,
+                      ),
+                    );
+                }}
+              >
+                <option value="" disabled>
+                  Custom
+                </option>
+                {Object.keys(displacementFinishes).map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {(['metalness', 'roughness'] as const).map((key) => {
+            const label = key === 'metalness' ? 'Metalness' : 'Roughness';
+            return (
+              <SliderControl
+                key={key}
+                id={key}
+                label={label}
+                value={params[key] ?? 0.5}
+                min={0}
+                max={1}
+                step={0.01}
+                percent
+                automatic={params[key] === undefined}
+                onAutomatic={() => edit(key, undefined)}
+                onChange={(v) => edit(key, v)}
+              />
+            );
+          })}
+          <SliderControl
+            id="specular-level"
+            label="Specular level"
+            value={params.specularIntensity ?? 1}
+            min={0}
+            max={1}
+            step={0.01}
+            percent
+            onChange={(v) => edit('specularIntensity', v)}
+          />
+          <p className="property-hint">
+            Roughness sets reflection sharpness. Specular level sets reflection strength on nonmetals.
+          </p>
           <div className="property-profile">
             <label htmlFor="relief-profile">Height profile</label>
             <select

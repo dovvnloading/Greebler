@@ -41,6 +41,7 @@ export function newWriters(size: number, native = false): StudioMaps<StripPng> {
 
 export interface PreviewSource {
   field: ReliefField;
+  ao: Uint8Array;
   rough: Uint8Array;
   metal: Uint8Array;
 }
@@ -53,8 +54,40 @@ export interface PreviewBake {
 }
 type MapName = keyof StudioMaps<Blob>;
 
-// Normal strength and AO change only derived maps. Wear is part of the structural
-// key because it also adds physical chips to the panel rims.
+function finishSettings(params: GenerationParams) {
+  const roughness = params.roughness;
+  // The Displacement coating ranges from about 137 to 183 across its terraces.
+  // Move its midpoint to the authored roughness while retaining machining and
+  // wear between the two uniform endpoints of a perfectly smooth or rough tile.
+  const midpoint = 160;
+  const target = (roughness ?? 0) * 255;
+  const rough =
+    roughness === undefined
+      ? undefined
+      : Uint8Array.from({ length: 256 }, (_, base) =>
+          Math.round(
+            target <= midpoint ? (base * target) / midpoint : 255 - ((255 - base) * (255 - target)) / (255 - midpoint),
+          ),
+        );
+  return { rough, metal: params.metalness === undefined ? undefined : Math.round(params.metalness * 255) };
+}
+
+function packFinish(
+  maps: Pick<StudioMaps<Uint8Array>, 'ao' | 'roughness' | 'metalness' | 'orm'>,
+  settings: ReturnType<typeof finishSettings>,
+) {
+  const { ao, roughness, metalness, orm } = maps;
+  if (settings.metal !== undefined) metalness.fill(settings.metal);
+  for (let i = 0; i < ao.length; i++) {
+    if (settings.rough) roughness[i] = settings.rough[roughness[i]];
+    orm[i * 3] = ao[i];
+    orm[i * 3 + 1] = roughness[i];
+    orm[i * 3 + 2] = metalness[i];
+  }
+}
+
+// These edits affect derived channels. Wear stays in the structural key because
+// it also adds physical chips to the panel rims.
 export async function revisePreview(
   previous: PreviewBake,
   params: GenerationParams,
@@ -63,17 +96,26 @@ export async function revisePreview(
 ): Promise<PreviewBake> {
   const normal = params.normalStrength !== previous.params.normalStrength;
   const ao = params.aoStrength !== previous.params.aoStrength;
+  const rough = params.roughness !== previous.params.roughness;
+  const metal = params.metalness !== previous.params.metalness;
+  const orm = ao || rough || metal;
   const names: MapName[] = [];
   if (normal) names.push('normal');
   if (ao) names.push('ao');
-  if (ao) names.push('orm');
+  if (rough) names.push('roughness');
+  if (metal) names.push('metalness');
+  if (orm) names.push('orm');
   if (!names.length) {
     progress?.(1, 'Cached material');
-    return previous;
+    // Material-only parameters (e.g. dielectric specular intensity) can change
+    // the completed recipe even when every texture is reused.
+    return { ...previous, params };
   }
   const size = params.resolution;
   const encoders = names.map((name) => ({ name, png: writer(size, name, true) }));
   const source = previous.source;
+  const nextAO = ao ? new Uint8Array(size * size) : source.ao;
+  const settings = finishSettings(params);
   const maps = { ...previous.maps };
   try {
     const bandRows = stripHeight(size);
@@ -85,19 +127,22 @@ export async function revisePreview(
       const output: Partial<StudioMaps<Uint8Array>> = {};
       if (normal) output.normal = source.field.normals(top, rows, params.normalStrength ?? 1);
       if (ao) {
-        const occlusion = new Uint8Array(count);
-        const packed = new Uint8Array(count * 3);
         for (let y = 0; y < rows; y++) {
           const offsets = source.field.rowOffsets(top + y);
           for (let x = 0; x < size; x++) {
-            const i = y * size + x;
-            packed[i * 3] = occlusion[i] = source.field.occlusion(x, offsets, params.aoStrength ?? 1);
-            packed[i * 3 + 1] = source.rough[offset + i];
-            packed[i * 3 + 2] = source.metal[offset + i];
+            nextAO[offset + y * size + x] = source.field.occlusion(x, offsets, params.aoStrength ?? 1);
           }
         }
-        output.ao = occlusion;
-        output.orm = packed;
+      }
+      if (orm) {
+        const band = {
+          ao: nextAO.subarray(offset, offset + count),
+          roughness: source.rough.slice(offset, offset + count),
+          metalness: source.metal.slice(offset, offset + count),
+          orm: new Uint8Array(count * 3),
+        };
+        packFinish(band, settings);
+        Object.assign(output, band);
       }
       await Promise.all(
         encoders.map(({ name, png }) => {
@@ -112,7 +157,7 @@ export async function revisePreview(
     }
     signal?.throwIfAborted();
     for (const { name, png } of encoders) maps[name] = png.blob();
-    return { key: previous.key, source, params, maps };
+    return { key: previous.key, source: ao ? { ...source, ao: nextAO } : source, params, maps };
   } finally {
     for (const { png } of encoders) png.dispose();
   }
@@ -140,9 +185,11 @@ export function* renderStudio(
   const field = new ReliefField(heights, size, formed);
   const machined = formed ? new FormedHeightRaster(layout, size) : undefined;
   const microfinish = formed ? new FormedFinish(size, params.finishSeed ?? params.seed, finish) : undefined;
+  const settings = finishSettings(params);
   const retained = capture
     ? {
         field,
+        ao: new Uint8Array(size * size),
         rough: new Uint8Array(size * size),
         metal: new Uint8Array(size * size),
       }
@@ -205,9 +252,11 @@ export function* renderStudio(
         params.wear ?? 0.35,
       );
       if (retained) {
+        retained.ao.set(band.ao, top * size);
         retained.rough.set(band.roughness, top * size);
         retained.metal.set(band.metalness, top * size);
       }
+      if (settings.rough || settings.metal !== undefined) packFinish(band, settings);
       const pending = [];
       for (const name of mapNames) {
         const write = writers[name].write(band[name], rows);

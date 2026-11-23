@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "params": {
+    "style": "tech",
+    "panelPattern": "thermal",
+    "resolution": 2048,
+    "seed": 46847,
+    "largeDensity": 0.85,
+    "mediumDensity": 0.85,
+    "smallDensity": 0.75,
+    "gapSize": 3,
+    "complexity": 5,
+    "palette": ["#18252a", "#314950", "#466e73", "#89a49e", "#e5dac2"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0.3,
+    "reliefProfile": "formed"
+  }
+}

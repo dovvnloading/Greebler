@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 
 // Independent readback of the studio encoder's eight-bit Sub-filtered PNGs.
-export function readStudioPixels(file: Uint8Array, channels: 3 | 4) {
+export function readStudioPixels(file: Uint8Array, channels: 1 | 3 | 4) {
   const png = Buffer.from(file);
   const width = png.readUInt32BE(16);
   const height = png.readUInt32BE(20);
-  assert.deepEqual([png[24], png[25]], [8, channels === 3 ? 2 : 6]);
+  assert.deepEqual([png[24], png[25]], [8, { 1: 0, 3: 2, 4: 6 }[channels]]);
   const data = [];
   for (let i = 8; i < png.length; ) {
     const size = png.readUInt32BE(i);

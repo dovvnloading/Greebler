@@ -64,6 +64,20 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
       const tunedProfile = await signatures(tuned);
       releaseIdleWorker();
       const freshProfile = await signatures(tuned);
+      const relief: GenerationRecipe = {
+        ...formed,
+        params: { ...formed.params, style: 'displacement', resolution: 96 },
+      };
+      const colored = { ...relief, params: { ...relief.params, palette: ['#182230', '#ee7026', '#ffe6af'] } };
+      const coated = { ...colored, params: { ...colored.params, roughness: 0.28, metalness: 0.86 } };
+      const reliefBase = await signatures(relief);
+      const paletteEdit = await signatures(colored);
+      const coatedEdit = await signatures(coated);
+      const specularEdit = await signatures({ ...coated, params: { ...coated.params, specularIntensity: 0 } });
+      releaseIdleWorker();
+      const freshCoating = await signatures(coated);
+      // Retain the original per-pixel finish even when a worker first saw the authored coating.
+      const restored = await signatures(colored);
       return {
         base,
         revised,
@@ -76,6 +90,12 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
         changedProfile,
         tunedProfile,
         freshProfile,
+        reliefBase,
+        paletteEdit,
+        coatedEdit,
+        specularEdit,
+        freshCoating,
+        restored,
       };
     } finally {
       releaseIdleWorker();
@@ -96,6 +116,19 @@ test('incremental worker bakes match fresh renders when finish or geometry chang
   expect(frames.tunedProfile.hashes.normal).not.toBe(frames.changedProfile.hashes.normal);
   expect(frames.tunedProfile.hashes.ao).not.toBe(frames.changedProfile.hashes.ao);
   expect(frames.tunedProfile.hashes).toEqual(frames.freshProfile.hashes);
+  const { reliefBase, paletteEdit, coatedEdit, specularEdit, freshCoating, restored } = frames;
+  expect(paletteEdit.hashes.albedo).not.toBe(reliefBase.hashes.albedo);
+  expect({ ...paletteEdit.hashes, albedo: reliefBase.hashes.albedo }).toEqual(reliefBase.hashes);
+  expect(coatedEdit.stage).toBe('Updating finish');
+  for (const key of ['roughness', 'metalness', 'orm'] as const)
+    expect(coatedEdit.hashes[key]).not.toBe(paletteEdit.hashes[key]);
+  for (const key of ['albedo', 'normal', 'height', 'ao'] as const)
+    expect(coatedEdit.hashes[key]).toBe(paletteEdit.hashes[key]);
+  expect(freshCoating.hashes).toEqual(coatedEdit.hashes);
+  expect(specularEdit.stage).toBe('Cached material');
+  expect(specularEdit.hashes).toEqual(coatedEdit.hashes);
+  expect(restored.stage).toBe('Updating finish');
+  expect(restored.hashes).toEqual(paletteEdit.hashes);
 });
 
 test('legacy jobs retain HTML canvas PNGs and can cancel during subdivision', async ({ page }) => {

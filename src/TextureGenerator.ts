@@ -173,7 +173,14 @@ export class TextureGenerator {
     const { params } = this;
     const key =
       params.resolution <= 512
-        ? JSON.stringify({ ...params, normalStrength: undefined, aoStrength: undefined })
+        ? JSON.stringify({
+            ...params,
+            normalStrength: undefined,
+            aoStrength: undefined,
+            roughness: undefined,
+            metalness: undefined,
+            specularIntensity: undefined,
+          })
         : undefined;
     if (key && lastPreview?.key === key) {
       const revision = await revisePreview(lastPreview, params, signal, onProgress);

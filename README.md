@@ -6,7 +6,7 @@ Greebler is a procedural hard-surface material editor. Build repeating service p
 
 ## Author a material
 
-1. Choose a factory preset in **Material library**, or open a recipe file. Each hardware preset has a matching 2048 px recipe in [examples](examples/). **Save to library** keeps a named variant in this browser. **Save recipe** downloads portable JSON.
+1. Choose a factory preset in **Material library**, or open a recipe file. Each factory material has a matching 2048 px recipe in [examples](examples/). **Save to library** keeps a named variant in this browser. **Save recipe** downloads portable JSON.
 2. In **Properties**, set the seed, panel density, gap size and surface finish. Enter an exact numeric value or drag its slider. **Variation seeds** change fitted components and finish independently. **Panel components** lets you select a bay on the tile and choose its fitted hardware. The palette accepts hex colors and supports reordering. Undo and redo are in the toolbar.
 3. Orbit the specimen, sweep **Light angle**, or choose **Clay** and **Raking light** to inspect its shape. Select an axis on the orientation control to align the camera. **Frame material** restores the starting view. [Matched viewport renders](docs/viewport-comparison.webp)
 4. Click a channel in **Texture set** to open the map. **Split** shows the map beside the shaded material. **2×2** reveals tile boundaries, and **1:1** lets you pan across the completed bake at native resolution. Switching back to 3D restores the camera and shading settings.
@@ -16,7 +16,9 @@ Drag a divider to resize either dock. With a divider focused, the arrow keys adj
 
 ## Displacement
 
-Choose **Displacement** in the material library for a classic sci-fi height field. Broad gray terraces meet at stepped joints. Recessed service strips carry traces and sockets, and a few square towers rise above the plates. Change the main seed for a new tile or the component detail seed to vary the fittings within the same layout. [Download the 2048 px recipe](examples/displacement.json)
+Choose **Displacement** in the material library for a classic sci-fi height field. Broad terraces meet at stepped joints. Recessed service strips carry traces and sockets, and a few square towers rise above the plates. Change the main seed for a new tile or the component detail seed to vary the fittings within the same layout. [Download the 2048 px recipe](examples/displacement.json)
+
+Under **Properties → Surface finish → Material finish**, choose **Cobalt alloy**, **Burnished copper**, **Signal enamel**, or **Classic gray**. Use **Color palette** to recolor the height bands individually. **Metalness** sets the metallic fraction, **Roughness** controls how sharp the reflections look, and **Specular level** sets reflection strength on the nonmetallic portion. Choose **Auto** on metalness or roughness to restore each component’s authored values. Changing the finish preserves the 16-bit height, normals and occlusion.
 
 The left image shows the repeating height tile. The raking light on the right shows how the steps and cuts read on a displaced mesh. Use the 16-bit **Height** PNG as linear, non-color data in a displacement shader.
 
@@ -34,13 +36,15 @@ On the 2048 px **Displacement** plane (seed 3894), the adaptive mesh used 479,72
 
 ## Hardware patterns
 
-![Nine hardware presets, showing iris shutters, linear actuators, gusset trusses, heat exchangers, cable harnesses, honeycomb intakes, RF waveguides, cartridge racks and optical arrays](docs/hardware-patterns.webp)
+Five factory materials mix fittings across their panels. **Service deck** draws from all nine hardware patterns. **Relay board** combines terminals, controllers, harnesses, cartridges and actuators. **Mechanical bay** pairs actuators and trusses with shutters, harnesses and cartridges. **Thermal plant** mixes exchangers, intakes, radiators, harnesses and actuators. **Avionics rack** fits waveguides and optics alongside cartridges, controllers, wiring and terminals.
 
-In Studio v2, choose **Properties → Generator → Panel pattern** to fit a pattern across a material. **Mixed hardware** chooses a pattern independently for each populated bay. **Medium details** controls how many bays receive hardware. Change **Variation seeds → Component detail** to vary the fittings within the same panel layout.
+![Three mixed hardware materials and three finishes on the same Displacement tile](docs/material-variations.webp)
 
-To place one part by hand, open **Geometry → Panel components**, pick a bay and choose a **Fitted component**. Select **Procedural default** to return that bay to the material’s pattern. These settings travel with the recipe through the editor, command-line bake and material exports.
+Under **Properties → Generator → Panel pattern**, choose a randomized mix. **Medium details** controls how many bays receive hardware. Reroll **Variation seeds → Component detail** to change the fittings inside the current panel layout.
 
-| Pattern recipe | Surface detail |
+To place a specific part, open **Geometry → Panel components**, pick a bay and choose a **Fitted component**. Select the **Procedural** entry to return the bay to its seeded assignment. The component studies below also remain available as individual recipes.
+
+| Component study | Surface detail |
 | --- | --- |
 | [Iris shutter](examples/iris.json) | Overlapping shutter leaves surround a variable aperture inside a slotted retaining ring. |
 | [Linear actuator](examples/coupling.json) | A polished ram extends from a painted cylinder into a pinned clevis. |
@@ -70,13 +74,15 @@ At unit normal strength the full displacement range corresponds to 9.765625 mm f
 
 ![Exported service-deck and relay-board materials rendered in Blender Cycles, including tiled albedo and corresponding height, normal and ORM](docs/materials.webp)
 
-These Blender Cycles renders use the included 2048 px recipes and their exported maps. The lower row shows the repeating albedo and detail crops of height, tangent-space normal and packed ORM.
+These Blender Cycles renders show the original service deck and relay board recipes with their exported maps. The lower row shows the repeating albedo and detail crops of height, tangent-space normal and packed ORM.
 
 | Package target | What to import |
 | --- | --- |
 | glTF 2.0 | Extract the archive and open `material.gltf` alongside `maps/`. It binds base color, tangent-space normals and packed metallic/roughness/occlusion on a UV swatch. Height is supplied separately. |
 | Unreal Engine | Use the included DirectX normal with green flip disabled. Import ORM as Masks with sRGB disabled. Wire red to Ambient Occlusion, green to Roughness and blue to Metallic. |
 | Unity HDRP | Assign base color, the +Y normal and the HDRP Mask Map to an HDRP/Lit material. Mask RGBA carries metallic, occlusion, full detail coverage and inverse roughness. Preserve the input alpha and use linear sampling. |
+
+An authored **Specular level** travels in the glTF swatch through `KHR_materials_specular`, in the Blender material’s Specular IOR Level and in the Unreal import guide. Unity HDRP/Lit Standard uses a fixed dielectric reflectance. Matching a custom specular level there requires a compatible shader.
 
 Every ZIP includes the source PNGs, a canonical recipe and a manifest recording pixel format, bit depth, channel bindings, relief scale and recipe ID. The engine-specific packages also include the converted texture and import instructions. [Khronos glTF material reference](https://github.com/KhronosGroup/glTF/tree/main/specification/2.0#materials) · [Unreal texture masks](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-texture-masks-in-unreal-engine) · [Unity HDRP mask maps](https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/Mask-Map-and-Detail-Map.html)
 
@@ -124,7 +130,7 @@ The Blender importer accepts a ZIP, an extracted package directory or its manife
 ```bash
 blender --background --factory-startup --python-exit-code 1 \
   --python tools/blender_material.py -- \
-  bakes/greebler-tech-2048-g2-a30bfe08.zip --tile-width-m 1 --out bakes/service-deck.blend
+  bakes/greebler-tech-2048-g2-617a5b71.zip --tile-width-m 1 --out bakes/service-deck.blend
 ```
 
 Add the output directory as an asset library in Blender or append the material from the file. Replacing a previous library requires `--force`.

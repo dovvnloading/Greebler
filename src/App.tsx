@@ -54,6 +54,7 @@ function loadRecipe() {
   return createGenerationRecipe({
     reliefProfile: 'formed',
     style: 'tech',
+    panelPattern: 'mixed',
     resolution: 1024,
     seed: 12345,
     largeDensity: 0.8,

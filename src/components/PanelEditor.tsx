@@ -1,7 +1,7 @@
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { drawThumbnail } from '../preview/drawThumbnail';
-import { planStudioPanels } from '../engine/surfaceAssembly';
+import { planStudioPanels, planStudioBay } from '../engine/surfaceAssembly';
 import { TILE } from '../engine/surfacePrimitives';
 import { type GenerationRecipe, componentLabels, type PanelOverrides, panelComponents } from '../recipes';
 
@@ -28,6 +28,7 @@ export function PanelEditor({ recipe, albedo, onChange }: PanelEditorProps) {
   const { slots } = useMemo(() => planStudioPanels(recipe.params), [recipe.params]);
   const panel = slots.find((slot) => slot.id === selected) ?? slots[0];
   const overrides = recipe.params.panelOverrides ?? {};
+  const procedural = planStudioBay(recipe.params, panel.seed).component;
 
   function changeComponent(component: string) {
     const next = { ...overrides };
@@ -90,7 +91,9 @@ export function PanelEditor({ recipe, albedo, onChange }: PanelEditorProps) {
               value={overrides[panel.id] ?? ''}
               onChange={(event) => changeComponent(event.target.value)}
             >
-              <option value="">Procedural default</option>
+              <option value="">
+                {procedural ? `Procedural · ${componentLabels[procedural]}` : 'Procedural default'}
+              </option>
               {panelComponents.map((key) => (
                 <option key={key} value={key}>
                   {componentLabels[key]}

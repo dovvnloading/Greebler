@@ -4,9 +4,11 @@ import {
   convertRecipeVersion,
   type GenerationParams,
   generationParamsFromRecipe,
+  getGenerationRecipeId,
   parseGenerationRecipe,
   serializeGenerationRecipe,
 } from '../recipes';
+import { displacementFinishes } from '../workspace/displacementFinishes';
 import { drawDisplacementBay } from './displacementLayout';
 import { FormedHeightRaster } from './formedHeight';
 import { planStudioPanels } from './surfaceAssembly';
@@ -56,7 +58,16 @@ describe('Displacement factory material', () => {
   });
 
   it('keeps gray as a height cue while preserving relief when the artist repaints the tile', () => {
-    const original = layout();
+    const classic = {
+      ...preset,
+      palette: [...displacementFinishes['Classic gray'].palette],
+      metalness: undefined,
+      roughness: undefined,
+      specularIntensity: undefined,
+    };
+    expect(getGenerationRecipeId({ version: 2, params: classic })).toBe('g2-1545f6b6');
+    const original = layout(classic);
+    expect(layout().some(({ finish }) => finish && !/^#([0-9a-f]{2})\1\1$/i.test(finish.color))).toBe(true);
     const repainted = layout({ palette: ['#102020', '#ef7624'] });
     expect(repainted.map(({ finish, ...mark }) => mark)).toEqual(original.map(({ finish, ...mark }) => mark));
     expect(repainted.map((mark) => mark.finish?.color)).not.toEqual(original.map((mark) => mark.finish?.color));

@@ -382,3 +382,25 @@
     min-height: 32px;
   }
 }
+
+.property-slider-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.property-slider-label button {
+  border: 1px solid var(--property-line);
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: var(--property-input);
+  color: var(--property-muted);
+  font-size: 10px;
+}
+.property-slider-label button[aria-pressed="true"] {
+  color: var(--property-accent);
+}
+.property-hint {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--property-muted);
+}

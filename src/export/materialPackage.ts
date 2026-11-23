@@ -83,7 +83,7 @@ async function addEngineFiles(
 ) {
   if (target === 'gltf') return {};
   const size = recipe.params.resolution;
-  const { source, derivedFile, guide, importSettings } = engineProfile(target, size);
+  const { source, derivedFile, guide, importSettings } = engineProfile(target, size, recipe.params.specularIntensity);
   const converted = await buildProfileTexture(blobs[source], size, target, signal);
   files.set(derivedFile, converted);
   files.set('IMPORT.md', new Blob([guide], { type: 'text/markdown' }));
@@ -121,6 +121,7 @@ export async function buildMaterialPackage(
     ]),
   );
   const id = getGenerationRecipeId(recipe);
+  const specular = recipe.version === 2 ? recipe.params.specularIntensity : undefined;
   const files = new Map<string, Blob>();
   const profile = await addEngineFiles(files, target, { recipe, blobs }, signal);
   const metadata = new Map<string, Blob>([
@@ -135,6 +136,7 @@ export async function buildMaterialPackage(
         recipe: 'recipe.json',
         material: 'material.gltf',
         workflow: 'metallic-roughness',
+        ...(specular !== undefined && { specularIntensity: specular }),
         normalEncoding: recipe.version === 1 ? 'greebler-v1-gradient' : 'tangent-space-opengl-positive-y',
         heightEncoding: 'relative-linear-black-low-white-high',
         ...(recipe.version === 2 && {
@@ -147,7 +149,7 @@ export async function buildMaterialPackage(
         maps: Object.fromEntries(maps),
       }),
     ],
-    ['material.gltf', jsonFile(materialSwatch(id, recipe.version !== 1))],
+    ['material.gltf', jsonFile(materialSwatch(id, recipe.version !== 1, specular))],
   ]);
   for (const [path, file] of metadata) files.set(path, file);
   for (const { key } of mapChannels) files.set(`maps/${key}.png`, blobs[key]);

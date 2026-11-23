@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { CompletedMaterial } from '../export/materialMaps';
-import { getGenerationRecipeId } from '../recipes';
+import { type GenerationRecipe, getGenerationRecipeId, serializeGenerationRecipe } from '../recipes';
 import { MAX_SWATCH_SIZE, type StudioHeight, unpackStudioHeightAsync } from './heightTexture';
 
 export interface SwatchTextures {
@@ -9,10 +9,31 @@ export interface SwatchTextures {
   orm: THREE.Texture;
   height: THREE.Texture;
   packedHeight: boolean;
+  specularIntensity?: number;
+  heightKey: string;
+  heightField?: StudioHeight;
   meshSource: Uint8Array | Blob;
   size: number;
   id: string;
   dispose: () => void;
+}
+
+// Retain every structural input, including wear (chipped rims), sampling size
+// and finish seed (machining). Studio palette and optical settings never enter the height pass.
+export function swatchHeightKey(recipe: GenerationRecipe) {
+  if (recipe.version === 1) return serializeGenerationRecipe(recipe);
+  return serializeGenerationRecipe({
+    ...recipe,
+    params: {
+      ...recipe.params,
+      palette: ['#000000'],
+      normalStrength: 1,
+      aoStrength: 1,
+      metalness: undefined,
+      roughness: undefined,
+      specularIntensity: undefined,
+    },
+  });
 }
 
 async function readHeight(blob: Blob, signal: AbortSignal) {
@@ -103,16 +124,20 @@ export async function loadSwatchTextures(
   material: CompletedMaterial,
   anisotropy: number,
   signal: AbortSignal,
+  previousTextures?: SwatchTextures | null,
 ): Promise<SwatchTextures> {
   const sourceSize = material.recipe.params.resolution;
   const size = Math.min(MAX_SWATCH_SIZE, sourceSize);
   const resize = size === sourceSize ? undefined : size;
   const packedHeight = material.recipe.version === 2;
-  let meshSource: Uint8Array | Blob = material.blobs.height;
+  const heightKey = swatchHeightKey(material.recipe);
+  let heightField = previousTextures?.heightKey === heightKey ? previousTextures.heightField : undefined;
   const height = async () => {
     if (!packedHeight) return loadImage(material.blobs.height, resize);
-    const field = await readHeight(material.blobs.height, signal);
-    meshSource = field.pixels;
+    const field = heightField ?? (await readHeight(material.blobs.height, signal));
+    heightField = field;
+    // CPU pixels are immutable and also key adaptive topology. Each texture
+    // set owns its GPU handles so replacing one set can dispose it independently.
     const texture = new THREE.DataTexture(
       field.pixels,
       field.width,
@@ -170,7 +195,10 @@ export async function loadSwatchTextures(
     orm,
     height: field,
     packedHeight,
-    meshSource,
+    specularIntensity: packedHeight ? material.recipe.params.specularIntensity : undefined,
+    heightKey,
+    heightField,
+    meshSource: heightField?.pixels ?? material.blobs.height,
     id: getGenerationRecipeId(material.recipe),
     size,
     dispose,

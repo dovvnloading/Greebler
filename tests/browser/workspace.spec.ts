@@ -157,6 +157,29 @@ test('Displacement loads from the library, renders height and downloads its port
   await page.getByRole('button', { name: 'Displacement', exact: true }).click();
   const style = page.getByLabel('Style', { exact: true });
   await expect(style).toHaveValue('displacement');
+  const finish = page.getByLabel('Material finish', { exact: true });
+  await expect(finish).toHaveValue('Cobalt alloy');
+  await finish.selectOption('Burnished copper');
+  await expect(page.getByLabel('Metalness value', { exact: true })).toHaveValue('95');
+  await expect(page.getByLabel('Roughness value', { exact: true })).toHaveValue('23');
+  await page.getByLabel('Specular level value', { exact: true }).fill('32');
+  await page.getByLabel('Specular level value', { exact: true }).press('Enter');
+  await expect(finish).toHaveValue('');
+  const editedFile = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download recipe JSON', exact: true }).click();
+  const edited = await readRecipe(await editedFile);
+  expect(edited.params).toMatchObject({
+    seed: 3894,
+    metalness: 0.95,
+    roughness: 0.23,
+    specularIntensity: 0.32,
+    palette: ['#21120e', '#583023', '#a35d3c', '#d89360', '#f8d4a1'],
+  });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(finish).toHaveValue('Burnished copper');
+  await finish.selectOption('Classic gray');
+  await expect(page.getByLabel('Use component metalness')).toHaveAttribute('aria-pressed', 'true');
+  await finish.selectOption('Cobalt alloy');
   const pendingFile = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download recipe JSON', exact: true }).click();
   const recipe = await readRecipe(await pendingFile);

@@ -31,7 +31,7 @@ function quadBuffer(): string {
   return `data:application/octet-stream;base64,${btoa(String.fromCharCode(...bytes))}`;
 }
 
-export function materialSwatch(name: string, standardNormals: boolean) {
+export function materialSwatch(name: string, standardNormals: boolean, specularIntensity?: number) {
   const images = ['maps/albedo.png', 'maps/orm.png'];
   if (standardNormals) images.push('maps/normal.png');
   const accessors = [
@@ -51,6 +51,7 @@ export function materialSwatch(name: string, standardNormals: boolean) {
   if (standardNormals) accessors.push({ bufferView: 0, byteOffset: 24, componentType: 5126, count: 4, type: 'VEC4' });
   return {
     asset: { version: '2.0', generator: 'Greebler' },
+    ...(specularIntensity !== undefined && { extensionsUsed: ['KHR_materials_specular'] }),
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0, name }],
@@ -80,6 +81,9 @@ export function materialSwatch(name: string, standardNormals: boolean) {
         pbrMetallicRoughness: { baseColorTexture: { index: 0 }, metallicRoughnessTexture: { index: 1 } },
         occlusionTexture: { index: 1 },
         ...(standardNormals ? { normalTexture: { index: 2 } } : {}),
+        ...(specularIntensity !== undefined && {
+          extensions: { KHR_materials_specular: { specularFactor: specularIntensity } },
+        }),
         doubleSided: true,
       },
     ],
