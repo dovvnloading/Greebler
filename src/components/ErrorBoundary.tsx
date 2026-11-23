@@ -32,22 +32,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.props.fallback !== undefined) return this.props.fallback;
 
     return (
-      <main className="min-h-screen bg-[#151619] text-[#e5e9f0] p-8 flex items-center justify-center">
-        <section className="neu-flat max-w-xl rounded-2xl p-8 space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-[#f27d26]">Greebler stopped safely</p>
-          <h1 className="text-2xl font-semibold text-white">The preview could not be rendered.</h1>
-          <p className="text-sm text-[#8e9299]">
-            Reload the page to retry. If the problem continues, reduce the resolution or report the message below.
-          </p>
-          <pre className="max-h-32 overflow-auto rounded-lg bg-[#0a0a0c] p-3 text-xs text-[#f27d26] whitespace-pre-wrap">
-            {this.state.error.message}
-          </pre>
-          <button
-            type="button"
-            onClick={this.handleReload}
-            className="rounded-lg neu-convex px-4 py-3 text-xs font-semibold uppercase tracking-[0.15em] text-[#f27d26]"
-          >
-            Reload preview
+      <main className="recovery-screen">
+        <section role="alert">
+          <h1>The editor could not render this material.</h1>
+          <p>Reload the workspace to retry. If the error repeats, include the message below when reporting it.</p>
+          <pre>{this.state.error.message}</pre>
+          <button className="ui-button" type="button" onClick={this.handleReload}>
+            Reload workspace
           </button>
         </section>
       </main>

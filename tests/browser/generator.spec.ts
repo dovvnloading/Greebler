@@ -23,9 +23,7 @@ test('renders the 3D preview and regenerates the selected map size', async ({ pa
   });
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'GREEBLE' })).toBeVisible();
-  const albedoMap = page.getByRole('img', { name: 'albedo map' });
-  await expect(albedoMap).toHaveJSProperty('naturalWidth', 512);
+  await expect(page.getByRole('heading', { name: 'Greebler', exact: true })).toBeVisible();
   const preview = page.locator('canvas[data-engine]');
   await expect(preview).toHaveAttribute('data-material-size', '512');
   const draftId = await preview.getAttribute('data-material-id');
@@ -79,6 +77,9 @@ test('renders the 3D preview and regenerates the selected map size', async ({ pa
   await expect(rotate).toHaveAttribute('aria-pressed', 'true');
   await rotate.click();
   await expect(rotate).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'Split view', exact: true }).click();
+  const albedoMap = page.getByRole('img', { name: 'albedo map', exact: true });
+  await expect(albedoMap).toHaveJSProperty('naturalWidth', 512);
 
   const seedInput = page.locator('#seed-input');
   await seedInput.fill('-1');
@@ -96,8 +97,11 @@ test('generates and exports authored electrical materials when WebGL is unavaila
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByText(/3D preview unavailable/i)).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '3D preview unavailable' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '3D view', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Split view', exact: true })).toBeDisabled();
 
+  await page.getByRole('button', { name: 'Albedo', exact: true }).click();
   const albedoMap = page.getByRole('img', { name: 'albedo map' });
   await expect(albedoMap).toHaveJSProperty('naturalWidth', 512);
   const first = await albedoMap.getAttribute('src');
@@ -157,8 +161,9 @@ test('generates and exports authored electrical materials when WebGL is unavaila
   );
 
   expect(divergentPixels).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
   const downloaded = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'HGT', exact: true }).click();
+  await page.getByRole('button', { name: 'Download Height PNG', exact: true }).click();
   const file = await downloaded;
   expect(file.suggestedFilename()).toBe('greeble_height.png');
   expect(await file.failure()).toBeNull();
@@ -172,7 +177,10 @@ test('keeps the last usable maps after a PNG encoding error and recovers on retr
   });
   await page.goto('/');
   await page.locator('#renderer-select').selectOption('1');
-  await expect(page.getByRole('region', { name: 'Material exports' })).toContainText('g1-');
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Export material' })).toContainText('g1-');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Albedo', exact: true }).click();
   const albedo = page.getByRole('img', { name: 'albedo map' });
   await expect(albedo).toHaveJSProperty('naturalWidth', 512);
   const previous = await albedo.getAttribute('src');
@@ -189,6 +197,10 @@ test('keeps the last usable maps after a PNG encoding error and recovers on retr
   await generate.click();
   await expect(page.getByRole('alert')).toContainText('PNG');
   await expect(albedo).toHaveAttribute('src', previous);
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
+  const unchanged = page.getByRole('dialog', { name: 'Export material' });
+  await expect(unchanged).toContainText('Preview for 1024 px bake');
+  await page.keyboard.press('Escape');
   expect(await page.evaluate(async (url) => (await fetch(url)).ok, previous)).toBe(true);
 
   await generate.click();
@@ -222,12 +234,13 @@ test('cancels an 8K worker bake, keeps the completed draft, and restores a submi
     palette: ['#261e1a', '#4f565b', '#838381'],
   };
   await page.goto('/');
-  await page.getByLabel('Load recipe JSON').setInputFiles({
+  await page.getByLabel('Load recipe JSON', { exact: true }).setInputFiles({
     name: 'panel.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ version: 2, params })),
   });
   await expect(page.locator('#seed-input')).toHaveValue('7331');
+  await page.getByRole('button', { name: 'Albedo', exact: true }).click();
   const albedo = page.getByRole('img', { name: 'albedo map' });
   await expect(albedo).toHaveJSProperty('naturalWidth', 512);
   await expect(page.getByRole('button', { name: 'Cancel render' })).toHaveCount(0);
@@ -242,13 +255,14 @@ test('cancels an 8K worker bake, keeps the completed draft, and restores a submi
   await page.reload();
   await expect(page.locator('#seed-input')).toHaveValue('7331');
   await expect(page.locator('#resolution-select')).toHaveValue('8192');
+  await page.getByRole('button', { name: 'Albedo', exact: true }).click();
   await expect(albedo).toHaveJSProperty('naturalWidth', 512);
 });
 
 test('preserves art direction across preset edits, undo, redo and saved recipes', async ({ page }) => {
   await disableWebGL(page);
   await page.goto('/');
-  await page.getByLabel('Material preset').selectOption('electrical');
+  await page.getByRole('button', { name: 'Relay board', exact: true }).click();
   await expect(page.locator('#seed-input')).toHaveValue('9034');
   await page.getByText('Variation seeds', { exact: true }).click();
   await page.getByRole('button', { name: 'Vary components' }).click();
