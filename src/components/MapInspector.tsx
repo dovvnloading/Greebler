@@ -1,117 +1,124 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { Image as ImageIcon } from 'lucide-react';
 import { mapChannels, type CompletedMaterial, type MapChannel } from '../export/materialMaps';
 
-type View = 'Fit' | '2×2' | '1:1';
+type Magnification = 'Fit' | '2×2' | '1:1';
 
-const control = (active: boolean) =>
-  `shrink-0 rounded-md px-2.5 py-1.5 text-xs font-mono transition-colors focus-visible:outline-[#f27d26] ${
-    active ? 'neu-pressed text-[#f9a15f]' : 'text-[#aeb2b9] hover:text-white'
-  }`;
+const magnifications = [
+  { name: 'Fit', title: 'Fit one tile' },
+  { name: '2×2', title: 'Inspect tile seams' },
+  { name: '1:1', title: 'Inspect full-resolution texels' },
+] as const;
+
+function encoding(material: CompletedMaterial, channel: MapChannel) {
+  switch (channel) {
+    case 'albedo':
+      return 'sRGB';
+    case 'normal':
+      return material.recipe.version === 1 ? 'Legacy gradient' : 'Tangent space · +Y';
+    case 'height':
+      return material.recipe.version === 1 ? '8-bit relative height' : '16-bit relative height';
+    case 'orm':
+      return 'R occlusion · G roughness · B metallic';
+    default:
+      return 'Linear';
+  }
+}
 
 export function MapInspector({
   material,
-  preview,
+  channel = 'albedo',
+  active = true,
 }: {
   material: CompletedMaterial | null;
-  preview?: CompletedMaterial | null;
+  channel?: MapChannel;
+  active?: boolean;
 }) {
-  const [channel, setChannel] = useState<MapChannel>('albedo');
-  const [view, setView] = useState<View>('Fit');
-  const shown = view === '1:1' ? (material ?? preview) : (preview ?? material);
-  const src = shown?.urls[channel];
-  const isPreview = shown && material && shown.recipe.params.resolution < material.recipe.params.resolution;
-  let interpretation: string = 'Linear';
-  if (channel === 'albedo') interpretation = 'sRGB';
-  if (channel === 'normal') interpretation = shown?.recipe.version === 1 ? 'Legacy gradient' : 'Tangent space · +Y';
-  if (channel === 'height')
-    interpretation = shown?.recipe.version === 1 ? '8-bit relative height' : '16-bit relative height';
-  if (channel === 'orm') interpretation = 'R occlusion · G roughness · B metallic';
-
+  const [magnification, setMagnification] = useState<Magnification>('Fit');
+  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const scroller = useRef<HTMLElement>(null);
+  const nativeCenter = useRef({ u: 0.5, v: 0.5 });
+  const size = material?.recipe.params.resolution ?? 0;
+  const src = material?.urls[channel];
+  useLayoutEffect(() => {
+    const node = scroller.current;
+    if (!active || !node || magnification !== '1:1') return;
+    node.scrollLeft = nativeCenter.current.u * size - node.clientWidth / 2;
+    node.scrollTop = nativeCenter.current.v * size - node.clientHeight / 2;
+  }, [magnification, size, active]);
+  if (!active) return null;
+  const name = mapChannels.find((map) => map.key === channel)?.label;
   return (
-    <section
-      aria-label="Map inspector"
-      className="flex min-h-[300px] min-w-0 flex-1 flex-col gap-2 rounded-2xl neu-flat p-4"
-    >
-      <fieldset aria-label="Texture channel" className="flex flex-wrap gap-1">
-        {mapChannels.map((map) => (
-          <button
-            type="button"
-            key={map.key}
-            className={control(channel === map.key)}
-            aria-pressed={channel === map.key}
-            onClick={() => setChannel(map.key)}
-            title={
-              map.key === 'ao' ? 'Ambient occlusion' : map.key === 'orm' ? 'Occlusion, roughness, metallic' : map.label
-            }
-          >
-            {map.label}
-          </button>
-        ))}
-      </fieldset>
-
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl neu-pressed">
-        {!src ? (
-          <p className="grid h-full place-items-center text-xs text-[#aeb2b9]">Waiting for material</p>
-        ) : view === '1:1' ? (
-          <section
-            className="absolute inset-0 overflow-auto"
-            // biome-ignore lint/a11y/noNoninteractiveTabindex: The full-resolution scroll pane accepts keyboard scrolling.
-            tabIndex={0}
-            aria-label="Full-resolution texture, scroll to inspect"
-          >
-            <img
-              src={src}
-              alt={`${channel} map`}
-              className="block max-w-none"
-              style={{ imageRendering: 'pixelated' }}
-            />
-          </section>
-        ) : (
-          <div className="absolute inset-0 grid place-items-center" style={{ containerType: 'size' }}>
-            <div
-              className="grid aspect-square overflow-hidden"
-              style={{ width: 'min(100cqw, 100cqh)', gridTemplateColumns: view === '2×2' ? 'repeat(2, 1fr)' : '1fr' }}
-            >
-              {(view === '2×2' ? [0, 1, 2, 3] : [0]).map((tile) => (
-                <img
-                  key={tile}
-                  src={src}
-                  alt={tile === 0 ? `${channel} map` : ''}
-                  className="block h-full min-h-0 w-full min-w-0"
-                  draggable={false}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-mono text-[#aeb2b9]">
-          {shown && `${shown.recipe.params.resolution}px${isPreview ? ' preview' : ''} · `}
-          {interpretation}
-        </p>
-        <fieldset aria-label="Texture magnification" className="flex gap-1">
-          {(['Fit', '2×2', '1:1'] as const).map((option) => (
+    <section aria-label="Map inspector" className="mw-map">
+      <header className="mw-map-head">
+        <div className="mw-map-title">
+          <ImageIcon size={14} aria-hidden="true" />
+          <h3>{name}</h3>
+        </div>
+        <fieldset className="mw-mode-controls" aria-label="Texture magnification">
+          {magnifications.map(({ name, title }) => (
             <button
-              key={option}
+              key={name}
               type="button"
-              className={control(view === option)}
-              aria-pressed={view === option}
-              title={
-                option === '2×2'
-                  ? 'Inspect tile seams'
-                  : option === '1:1'
-                    ? 'Inspect full-resolution texels'
-                    : 'Fit one tile'
-              }
-              onClick={() => setView(option)}
+              aria-pressed={magnification === name}
+              title={title}
+              onClick={() => setMagnification(name)}
             >
-              {option}
+              {name}
             </button>
           ))}
         </fieldset>
-      </div>
+      </header>
+      {!src ? (
+        <div className="mw-wait" role="status">
+          Preparing texture…
+        </div>
+      ) : magnification === '1:1' ? (
+        <section
+          ref={scroller}
+          aria-label="Full-resolution texture, scroll to inspect"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard focus allows native arrow-key panning.
+          tabIndex={0}
+          className="mw-pixel-view"
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            if (size > node.clientWidth) nativeCenter.current.u = (node.scrollLeft + node.clientWidth / 2) / size;
+            if (size > node.clientHeight) nativeCenter.current.v = (node.scrollTop + node.clientHeight / 2) / size;
+          }}
+          onPointerDown={(event) => {
+            if (event.pointerType === 'touch' || event.button !== 0) return;
+            const node = event.currentTarget;
+            pan.current = { x: event.clientX, y: event.clientY, left: node.scrollLeft, top: node.scrollTop };
+            node.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (!pan.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+            event.currentTarget.scrollLeft = pan.current.left - event.clientX + pan.current.x;
+            event.currentTarget.scrollTop = pan.current.top - event.clientY + pan.current.y;
+          }}
+          onLostPointerCapture={() => {
+            pan.current = null;
+          }}
+        >
+          <img src={src} alt={`${channel} map`} width={size} height={size} draggable={false} />
+        </section>
+      ) : (
+        <div className="mw-map-mat">
+          <div className="mw-tile" data-repeat={magnification === '2×2'}>
+            {(magnification === '2×2' ? [0, 1, 2, 3] : [0]).map((tile) => (
+              <img key={tile} src={src} alt={tile === 0 ? `${channel} map` : ''} draggable={false} />
+            ))}
+          </div>
+        </div>
+      )}
+      {material && (
+        <footer className="mw-map-foot">
+          <span>{encoding(material, channel)}</span>
+          <span>
+            {size} × {size}
+          </span>
+        </footer>
+      )}
     </section>
   );
 }

@@ -1,616 +1,547 @@
-import { lazy, Suspense, useState, useEffect, useRef, useReducer } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties } from 'react';
+import {
+  ArrowDownToLine,
+  FileBox,
+  FolderOpen,
+  Hammer,
+  Keyboard,
+  PanelLeft,
+  PanelRight,
+  Redo2,
+  Save,
+  Undo2,
+  X,
+} from 'lucide-react';
 import {
   createGenerationRecipe,
-  convertRecipeVersion,
-  generationParamsFromRecipe,
   getGenerationRecipeId,
   parseGenerationRecipe,
   serializeGenerationRecipe,
-  DEFAULT_FINISH,
-  type GenerationParams,
   type GenerationRecipe,
 } from './recipes';
-import serviceDeck from '../examples/service-deck.json';
-import relayBoard from '../examples/relay-board.json';
-import { recipeHistory } from './engine/recipeHistory';
+import { PALETTE_PRESETS } from './utils/colorUtils';
+import { recipeHistory, type RecipeSource } from './engine/recipeHistory';
 import { useMaterialSession } from './engine/useMaterialSession';
+import { describeExport } from './export/materialMaps';
+import { RecipeInspector } from './components/RecipeInspector';
+import { MaterialWorkspace } from './components/MaterialWorkspace';
 import { MaterialExports } from './components/MaterialExports';
-import { PanelEditor } from './components/PanelEditor';
-import { MapInspector } from './components/MapInspector';
-import { Settings, RefreshCcw, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
-import { PALETTE_PRESETS, generatePalette } from './utils/colorUtils';
-import { SliderControl } from './components/SliderControl';
-import { CustomSelect } from './components/CustomSelect';
-import { NumberDial } from './components/NumberDial';
+import { MaterialLibrary, SaveMaterial } from './workspace/MaterialLibrary';
+import { Dialog } from './workspace/Dialog';
+import { DockResize } from './workspace/DockResize';
+import { useWorkspaceLayout } from './workspace/useWorkspaceLayout';
+import {
+  storeLibraryMaterial,
+  removeLibraryMaterial,
+  factoryMaterials,
+  readLibrary,
+  isLibraryStorageKey,
+  type LibraryMaterial,
+} from './workspace/materialLibrary';
 
-const defaultParams: GenerationParams = {
-  reliefProfile: 'formed',
-  style: 'tech',
-  resolution: 1024,
-  seed: 12345,
-  largeDensity: 0.8,
-  mediumDensity: 0.6,
-  smallDensity: 0.4,
-  gapSize: 4,
-  complexity: 5,
-  palette: PALETTE_PRESETS.Default,
-};
-
-const Viewport3D = lazy(() => import('./Viewport3D').then((module) => ({ default: module.Viewport3D })));
-const STORAGE_KEY = 'greebler.editor.recipe';
-
-function loadEditorRecipe() {
+const recipeKey = 'greebler.editor.recipe';
+const documentKey = 'greebler.editor.source.v1';
+const sizes = [512, 1024, 2048, 4096, 8192];
+type Modal = 'export' | 'save' | 'shortcuts' | null;
+function loadRecipe() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return parseGenerationRecipe(saved);
+    const text = localStorage.getItem(recipeKey);
+    if (text) return parseGenerationRecipe(text);
   } catch {
-    // Storage is optional, including in private browsing.
+    /* Use the initial material if storage is unavailable. */
   }
-  return createGenerationRecipe(defaultParams);
+  return createGenerationRecipe({
+    reliefProfile: 'formed',
+    style: 'tech',
+    resolution: 1024,
+    seed: 12345,
+    largeDensity: 0.8,
+    mediumDensity: 0.6,
+    smallDensity: 0.4,
+    gapSize: 4,
+    complexity: 5,
+    palette: PALETTE_PRESETS.Default,
+  });
+}
+function readSource(): RecipeSource | null {
+  try {
+    const s = JSON.parse(localStorage.getItem(documentKey) ?? 'null');
+    if (s && typeof s.name === 'string' && typeof s.recipeId === 'string')
+      return { name: s.name, recipeId: s.recipeId, assetId: typeof s.assetId === 'string' ? s.assetId : undefined };
+  } catch {
+    /* Descriptive metadata is optional. */
+  }
+  return null;
+}
+function initialLibrary() {
+  try {
+    return readLibrary();
+  } catch {
+    return [];
+  }
 }
 
 export default function App() {
-  const [history, dispatch] = useReducer(recipeHistory, undefined, () => ({
-    current: loadEditorRecipe(),
-    past: [],
-    future: [],
-    time: 0,
-  }));
-  const recipe = history.current;
-  const setRecipe = (next: GenerationRecipe, group?: string) =>
-    dispatch({ type: 'edit', recipe: next, group, time: performance.now() });
-  useEffect(() => {
-    const shortcut = (e: KeyboardEvent) => {
-      if (
-        !(e.ctrlKey || e.metaKey) ||
-        e.altKey ||
-        (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="true"]'))
-      )
-        return;
-      const key = e.key.toLowerCase();
-      if (key !== 'z' && key !== 'y') return;
-      e.preventDefault();
-      dispatch({ type: key === 'y' || e.shiftKey ? 'redo' : 'undo' });
+  const [history, dispatch] = useReducer(recipeHistory, undefined, () => {
+    const current = loadRecipe();
+    const factory = factoryMaterials.find(
+      (item) => serializeGenerationRecipe(item.recipe) === serializeGenerationRecipe(current),
+    );
+    const source = readSource() ?? {
+      name: factory?.name ?? (current.params.style === 'tech' ? 'Tech material' : 'Electrical material'),
+      recipeId: getGenerationRecipeId(current),
+      assetId: factory?.id,
     };
-    window.addEventListener('keydown', shortcut);
-    return () => window.removeEventListener('keydown', shortcut);
-  }, []);
-  const params = recipe.params;
+    return { current, source, past: [], future: [], time: 0 };
+  });
+  const { current: recipe, source } = history;
   const { material, render, progress, cancel, error } = useMaterialSession();
+  const layout = useWorkspaceLayout();
+  const [saved, setSaved] = useState(initialLibrary);
+  const [modal, setModal] = useState<Modal>(null);
+  const [notice, setNotice] = useState('');
   const [importError, setImportError] = useState('');
+  const importRequest = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const id = getGenerationRecipeId(recipe);
+  const documentName = source?.name ?? (recipe.params.style === 'tech' ? 'Tech material' : 'Electrical material');
+  const modified = Boolean(source && source.recipeId !== id);
+  useEffect(() => {
+    document.title = `${documentName}${modified ? ' *' : ''} · Greebler`;
+  }, [documentName, modified]);
+  const resolution = recipe.params.resolution;
+  const output = material ? describeExport(material.recipe, recipe) : '';
+  const addRecipe = useCallback(
+    (next: GenerationRecipe, group?: string) =>
+      dispatch({ type: 'edit', recipe: next, group, time: performance.now() }),
+    [],
+  );
+
   useEffect(() => {
     render(recipe, 'draft');
     try {
-      localStorage.setItem(STORAGE_KEY, serializeGenerationRecipe(recipe));
+      localStorage.setItem(recipeKey, serializeGenerationRecipe(recipe));
     } catch {
-      // An unavailable local store does not block editing or exporting a recipe.
+      /* Browser storage is optional. */
     }
   }, [recipe, render]);
+  useEffect(() => {
+    try {
+      if (source) localStorage.setItem(documentKey, JSON.stringify(source));
+      else localStorage.removeItem(documentKey);
+    } catch {
+      /* Optional metadata. */
+    }
+  }, [source]);
+  useEffect(() => {
+    const refresh = (e: StorageEvent) => {
+      if (isLibraryStorageKey(e.key)) setSaved(initialLibrary());
+    };
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, []);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 6500);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
-  const handleParamChange = <K extends keyof GenerationParams>(key: K, value: GenerationParams[K]) => {
-    if (
-      (key === 'seed' || key === 'detailSeed' || key === 'finishSeed') &&
-      value !== undefined &&
-      !Number.isSafeInteger(value)
-    )
-      return;
-    setRecipe(createGenerationRecipe({ ...generationParamsFromRecipe(recipe), [key]: value }, recipe.version), key);
-  };
-
-  const handleRandomizeSeed = () => handleParamChange('seed', crypto.getRandomValues(new Uint32Array(1))[0]);
-  const importRecipe = async (file?: File) => {
+  function openAsset(item: LibraryMaterial) {
+    importRequest.current++;
+    setImportError('');
+    dispatch({
+      type: 'edit',
+      recipe: item.recipe,
+      source: { name: item.name, recipeId: getGenerationRecipeId(item.recipe), assetId: item.id },
+      time: performance.now(),
+    });
+    layout.closeDrawer();
+  }
+  function saveLocal(name: string) {
+    try {
+      const assetId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (n) =>
+        n.toString(16).padStart(2, '0'),
+      ).join('');
+      const entry = { id: assetId, name, recipe };
+      if (readLibrary().some((item) => item.name.toLowerCase() === name.toLowerCase()))
+        return 'A saved material already has this name.';
+      storeLibraryMaterial(entry);
+      setSaved(readLibrary());
+      dispatch({ type: 'name', source: { name, recipeId: id, assetId: entry.id } });
+      setNotice('Material saved to library');
+      return null;
+    } catch {
+      return 'Could not save this material in browser storage. Use Save recipe to keep a file.';
+    }
+  }
+  function removeLocal(assetId: string) {
+    try {
+      removeLibraryMaterial(assetId);
+      setSaved(readLibrary());
+      setNotice('Material removed from library');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async function importRecipe(file?: File) {
     if (!file) return;
+    const request = ++importRequest.current;
+    setImportError('');
     try {
       if (file.size > 65536) throw new Error('A material recipe must be smaller than 64 KiB.');
-      const imported = parseGenerationRecipe(await file.text());
-      setImportError('');
-      setRecipe(imported);
+      const next = parseGenerationRecipe(await file.text());
+      if (request !== importRequest.current) return;
+      dispatch({
+        type: 'edit',
+        recipe: next,
+        time: performance.now(),
+        source: {
+          name: file.name.replace(/\.json$/i, '') || 'Imported material',
+          recipeId: getGenerationRecipeId(next),
+        },
+      });
+      layout.closeDrawer();
+      setNotice('Recipe opened');
     } catch (cause) {
-      setImportError(cause instanceof Error ? cause.message : 'Could not read the recipe.');
+      if (request === importRequest.current)
+        setImportError(
+          cause instanceof SyntaxError
+            ? 'Invalid material recipe. Choose a valid JSON file.'
+            : cause instanceof Error
+              ? cause.message
+              : 'Could not read that recipe.',
+        );
     }
-  };
-  const saveRecipe = () => {
-    const blob = new Blob([serializeGenerationRecipe(recipe)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${getGenerationRecipeId(recipe)}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+  }
+  function saveRecipe() {
+    const url = URL.createObjectURL(new Blob([serializeGenerationRecipe(recipe)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${id}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  useLayoutEffect(() => {
+    function keydown(e: KeyboardEvent) {
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.altKey ||
+        (document.querySelector('dialog[open]') && !target?.closest('.dialog-right .recipe-inspector'))
+      )
+        return;
+      const inspectorField = target?.closest('.recipe-inspector input[type=number], .recipe-inspector #palette-hex');
+      const textInput = inspectorField
+        ? inspectorField.hasAttribute('data-editing-draft')
+        : target?.closest(
+            'textarea, [contenteditable=true], input:not([type]), input:is([type=text],[type=search],[type=number],[type=email],[type=url],[type=tel],[type=password])',
+          );
+      const key = e.key.toLowerCase();
+      if (e.metaKey || e.ctrlKey) {
+        if (key === 's' && !e.shiftKey) {
+          e.preventDefault();
+          saveRecipe();
+        } else if (key === 'o' && !e.shiftKey) {
+          e.preventDefault();
+          fileInput.current?.click();
+        } else if (key === 'k' && !e.shiftKey) {
+          e.preventDefault();
+          layout.findMaterials();
+        } else if (key === 'enter') {
+          e.preventDefault();
+          render(recipe, 'bake');
+        } else if (!textInput && (key === 'z' || key === 'y')) {
+          e.preventDefault();
+          dispatch({ type: key === 'y' || e.shiftKey ? 'redo' : 'undo' });
+        }
+      } else if (e.shiftKey && e.code === 'Space' && !textInput && !e.repeat) {
+        e.preventDefault();
+        layout.toggleFocus();
+      }
+    }
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  });
+  const library = (
+    <MaterialLibrary
+      saved={saved}
+      activeId={source?.assetId}
+      onSelect={openAsset}
+      onSave={() => setModal('save')}
+      onRemove={removeLocal}
+      onImport={() => fileInput.current?.click()}
+      onDownload={saveRecipe}
+      importError={layout.drawer === 'library' ? importError : undefined}
+      searchRequest={layout.searchRequest}
+    />
+  );
+  const statusError = error || importError;
+  const properties = <RecipeInspector recipe={recipe} material={material} onChange={addRecipe} />;
 
   return (
-    <div className="min-h-screen bg-[#151619] text-[#8E9299] font-sans p-4 flex flex-col md:flex-row gap-6 overflow-x-clip md:overflow-hidden">
-      <nav
-        aria-label="Editor sections"
-        className="sticky top-0 z-30 flex justify-around rounded-lg bg-[#18191c] p-2 text-sm text-white md:hidden"
-      >
-        <a href="#studio-controls">Edit</a>
-        <a href="#studio-viewports">Inspect</a>
-        <a href="#studio-exports">Export</a>
-      </nav>
-      {/* Sidebar Controls */}
-      <aside
-        id="studio-controls"
-        className="studio-anchor order-2 md:order-none w-full md:w-[350px] flex-shrink-0 flex flex-col md:h-[calc(100dvh-2rem)] md:overflow-y-auto custom-scrollbar"
-      >
-        {/* Header */}
-        <div className="neu-flat p-6 rounded-2xl flex items-center gap-4 m-4 mb-2">
-          <div className="w-12 h-12 rounded-full neu-convex flex items-center justify-center text-[#F27D26]">
-            <Layers size={24} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-wider text-white">GREEBLE</h1>
-            <p className="text-[10px] text-[#8E9299] uppercase tracking-[0.2em]">Material authoring</p>
-          </div>
+    <div className={layout.focused ? 'editor-app is-focused' : 'editor-app'}>
+      <header className="app-bar">
+        <div className="app-brand">
+          <img
+            className="brand-mark"
+            src={new URL('./assets/greebler-mark.png', import.meta.url).href}
+            alt=""
+            width={28}
+            height={28}
+          />
+          <h1>Greebler</h1>
         </div>
-
-        {/* Controls */}
-        <div className="neu-flat p-6 rounded-2xl flex flex-col gap-6 m-4 my-2">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8E9299] flex items-center gap-2">
-              <Settings size={14} /> Parameters
-            </h2>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label htmlFor="material-preset" className="text-[10px] uppercase tracking-widest">
-              Material preset
-            </label>
-            <CustomSelect
-              id="material-preset"
-              placeholder="Choose a starting material…"
-              value=""
-              options={[
-                { label: 'Service deck', value: 'tech' },
-                { label: 'Relay board', value: 'electrical' },
-              ]}
-              onChange={(name) =>
-                setRecipe(parseGenerationRecipe(JSON.stringify(name === 'tech' ? serviceDeck : relayBoard)))
-              }
-            />
-            <label htmlFor="renderer-select" className="text-[10px] uppercase tracking-widest">
-              Renderer
-            </label>
-            <CustomSelect
-              id="renderer-select"
-              value={recipe.version}
-              onChange={(version) => {
-                const next = convertRecipeVersion(recipe, version);
-                setRecipe(
-                  version === 2
-                    ? createGenerationRecipe({ ...generationParamsFromRecipe(next), reliefProfile: 'formed' }, 2)
-                    : next,
-                );
-              }}
-              options={[
-                { label: 'Studio v2', value: 2 },
-                { label: 'Legacy v1', value: 1 },
-              ]}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="studio-action" onClick={() => fileInput.current?.click()}>
-                Load recipe
-              </button>
-              <button type="button" className="studio-action" onClick={saveRecipe}>
-                Save recipe
-              </button>
-            </div>
-            <input
-              ref={fileInput}
-              type="file"
-              aria-label="Load recipe JSON"
-              className="sr-only"
-              tabIndex={-1}
-              accept=".json,application/json"
-              onChange={(e) => {
-                void importRecipe(e.target.files?.[0]);
-                e.target.value = '';
-              }}
-            />
-            {importError && (
-              <p role="alert" className="text-xs text-[#ffb08c]">
-                {importError}
-              </p>
-            )}
-          </div>
-
-          {/* Seed */}
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <label htmlFor="seed-input" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
-                Seed
-              </label>
-              <button
-                type="button"
-                onClick={handleRandomizeSeed}
-                className="w-6 h-6 rounded-full neu-convex flex items-center justify-center hover:text-[#F27D26] transition-colors"
-                title="Randomize Seed"
-              >
-                <RefreshCcw size={12} />
-              </button>
-            </div>
-            <NumberDial id="seed-input" value={params.seed} onChange={(v) => handleParamChange('seed', v)} />
-          </div>
-
-          {recipe.version === 2 && (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-[#ccd0d6]">Variation seeds</summary>
-              <div className="mt-3 grid gap-3">
-                {(['detailSeed', 'finishSeed'] as const).map((key) => {
-                  const label = key === 'detailSeed' ? 'Component detail' : 'Surface finish';
-                  return (
-                    <div key={key} className="grid grid-cols-[1fr_auto] items-center gap-2">
-                      <label htmlFor={key}>{label}</label>
-                      <button
-                        type="button"
-                        className="studio-action"
-                        onClick={() => handleParamChange(key, crypto.getRandomValues(new Uint32Array(1))[0])}
-                      >
-                        Vary {key === 'detailSeed' ? 'components' : 'finish'}
-                      </button>
-                      <input
-                        id={key}
-                        type="number"
-                        step={1}
-                        placeholder={String(params.seed)}
-                        value={params[key] ?? ''}
-                        className="min-w-0 rounded bg-[#101114] p-2 text-white"
-                        onChange={(event) =>
-                          handleParamChange(key, event.target.value === '' ? undefined : event.target.valueAsNumber)
-                        }
-                      />
-                      <button
-                        type="button"
-                        disabled={params[key] === undefined}
-                        className="studio-action"
-                        onClick={() => handleParamChange(key, undefined)}
-                      >
-                        Use main seed
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
-          )}
-          {/* Style */}
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <label htmlFor="style-select" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
-                Style
-              </label>
-            </div>
-            <CustomSelect
-              id="style-select"
-              value={params.style}
-              onChange={(v) => handleParamChange('style', v)}
-              options={[
-                { label: 'Tech Detail', value: 'tech' },
-                { label: 'Electrical', value: 'electrical' },
-              ]}
-            />
-          </div>
-
-          {recipe.version === 2 && (
-            <PanelEditor
-              recipe={recipe}
-              previewUrl={
-                material &&
-                serializeGenerationRecipe(material.recipe) ===
-                  serializeGenerationRecipe({
-                    ...recipe,
-                    params: { ...params, resolution: material.recipe.params.resolution },
-                  })
-                  ? material.urls.albedo
-                  : undefined
-              }
-              onChange={(panelOverrides) =>
-                setRecipe(createGenerationRecipe({ ...generationParamsFromRecipe(recipe), panelOverrides }, 2))
-              }
-            />
-          )}
-
-          {/* Resolution */}
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <label htmlFor="resolution-select" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
-                Bake resolution
-              </label>
-            </div>
-            <CustomSelect
-              id="resolution-select"
-              value={params.resolution}
-              onChange={(v) => handleParamChange('resolution', v)}
-              options={[
-                ...(![512, 1024, 2048, 4096, 8192].includes(params.resolution)
-                  ? [{ label: `${params.resolution}x${params.resolution}`, value: params.resolution }]
-                  : []),
-                { label: '512x512', value: 512 },
-                { label: '1024x1024', value: 1024 },
-                { label: '2048x2048', value: 2048 },
-                { label: '4096x4096 (4K)', value: 4096 },
-                { label: '8192x8192 (8K)', value: 8192 },
-              ]}
-            />
-          </div>
-
-          <hr className="border-[#2a2b30]" />
-
-          {/* Albedo Color Map */}
-          <div className="flex flex-col gap-5">
-            <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8E9299]">Albedo Color Map</h3>
-
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <CustomSelect
-                  value=""
-                  placeholder="Presets..."
-                  onChange={(v) => {
-                    if (v) handleParamChange('palette', PALETTE_PRESETS[v]);
-                  }}
-                  options={Object.keys(PALETTE_PRESETS).map((k) => ({ label: k, value: k }))}
-                />
-              </div>
-              <div className="relative flex items-center">
-                <input
-                  type="color"
-                  onChange={(e) => handleParamChange('palette', generatePalette(e.target.value))}
-                  className="w-11 h-11 rounded cursor-pointer opacity-0 absolute inset-0 z-10"
-                  title="Generate from base color"
-                />
-                <div className="w-11 h-11 rounded-lg neu-convex flex items-center justify-center pointer-events-none text-[#F27D26] border border-[rgba(255,255,255,0.02)]">
-                  <Palette size={14} />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 justify-between">
-              {params.palette.map((color, idx) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: These controls edit fixed palette slots, including duplicate colors.
-                <div key={`palette-slot-${idx}`} className="flex flex-col items-center gap-2 group">
-                  <div className="relative w-10 h-10 rounded-lg neu-convex overflow-hidden border border-[rgba(255,255,255,0.05)]">
-                    <input
-                      aria-label={`Palette color ${idx + 1}`}
-                      type="color"
-                      value={color.startsWith('#') ? color : `#${color}`}
-                      onChange={(e) => {
-                        const newPal = [...params.palette];
-                        newPal[idx] = e.target.value;
-                        handleParamChange('palette', newPal);
-                      }}
-                      className="absolute inset-[-10px] w-[60px] h-[60px] cursor-pointer"
-                    />
-                  </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (idx > 0) {
-                          const newPal = [...params.palette];
-                          [newPal[idx - 1], newPal[idx]] = [newPal[idx], newPal[idx - 1]];
-                          handleParamChange('palette', newPal);
-                        }
-                      }}
-                      aria-label={`Move palette slot ${idx + 1} left`}
-                      disabled={idx === 0}
-                      className="text-[#8E9299] hover:text-[#F27D26] disabled:opacity-30"
-                    >
-                      <ChevronLeft size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (idx < params.palette.length - 1) {
-                          const newPal = [...params.palette];
-                          [newPal[idx + 1], newPal[idx]] = [newPal[idx], newPal[idx + 1]];
-                          handleParamChange('palette', newPal);
-                        }
-                      }}
-                      aria-label={`Move palette slot ${idx + 1} right`}
-                      disabled={idx === params.palette.length - 1}
-                      className="text-[#8E9299] hover:text-[#F27D26] disabled:opacity-30"
-                    >
-                      <ChevronRight size={12} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <hr className="border-[#2a2b30]" />
-
-          {/* Densities */}
-          <div className="flex flex-col gap-5">
-            <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8E9299]">Layer Densities</h3>
-
-            <SliderControl
-              id="large-density"
-              label="Large Panels"
-              value={params.largeDensity}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => handleParamChange('largeDensity', v)}
-            />
-            <SliderControl
-              id="medium-density"
-              label="Medium Details"
-              value={params.mediumDensity}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => handleParamChange('mediumDensity', v)}
-            />
-            <SliderControl
-              id="small-density"
-              label="Small Greebles"
-              value={params.smallDensity}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => handleParamChange('smallDensity', v)}
-            />
-          </div>
-
-          <hr className="border-[#2a2b30]" />
-
-          {/* Geometry */}
-          <div className="flex flex-col gap-5">
-            <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8E9299]">Geometry</h3>
-
-            <SliderControl
-              id="gap-size"
-              label="Gap Size"
-              value={params.gapSize}
-              min={0}
-              max={16}
-              step={1}
-              onChange={(v) => handleParamChange('gapSize', v)}
-            />
-            <SliderControl
-              id="complexity"
-              label="Complexity"
-              value={params.complexity}
-              min={1}
-              max={8}
-              step={1}
-              onChange={(v) => handleParamChange('complexity', v)}
-            />
-          </div>
-
-          {recipe.version === 2 && (
-            <div className="flex flex-col gap-5">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em]">Surface finish</h3>
-              <label className="text-xs text-[#c2c6cb]" htmlFor="relief-profile">
-                Height profile
-              </label>
-              <CustomSelect
-                id="relief-profile"
-                value={params.reliefProfile ?? 'original'}
-                options={[
-                  { label: 'Formed edges and curved tubing', value: 'formed' },
-                  { label: 'Original raster', value: 'original' },
-                ]}
-                onChange={(value) => handleParamChange('reliefProfile', value === 'formed' ? 'formed' : undefined)}
-              />
-              <SliderControl
-                id="normal-strength"
-                label="Normal strength"
-                value={params.normalStrength ?? DEFAULT_FINISH.normalStrength}
-                min={0}
-                max={4}
-                step={0.05}
-                onChange={(v) => handleParamChange('normalStrength', v)}
-              />
-              <SliderControl
-                id="ao-strength"
-                label="Occlusion strength"
-                value={params.aoStrength ?? DEFAULT_FINISH.aoStrength}
-                min={0}
-                max={2}
-                step={0.05}
-                onChange={(v) => handleParamChange('aoStrength', v)}
-              />
-              <SliderControl
-                id="wear"
-                label="Edge wear"
-                value={params.wear ?? DEFAULT_FINISH.wear}
-                min={0}
-                max={1}
-                step={0.05}
-                onChange={(v) => handleParamChange('wear', v)}
-              />
-            </div>
-          )}
+        <div className="document-label">
+          <FileBox size={15} />
+          <span title={documentName}>{documentName}</span>
+          {modified && <i role="img" aria-label="Modified recipe" title="Modified recipe" />}
         </div>
-        <div id="studio-exports" className="studio-anchor">
-          <MaterialExports material={material} intendedRecipe={recipe} />
-        </div>
-      </aside>
-
-      {/* Main Viewport Area */}
-      <main
-        id="studio-viewports"
-        className="studio-anchor min-w-0 flex-1 flex flex-col gap-3 md:h-[calc(100dvh-2rem)] md:overflow-y-auto"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 px-2">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className="studio-action"
-              disabled={!history.past.length}
-              onClick={() => dispatch({ type: 'undo' })}
-              title="Undo (Ctrl/⌘ Z)"
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              className="studio-action"
-              disabled={!history.future.length}
-              onClick={() => dispatch({ type: 'redo' })}
-              title="Redo (Ctrl/⌘ Shift Z)"
-            >
-              Redo
-            </button>
-            <a href="#studio-exports" className="studio-action">
-              Export maps
-            </a>
-          </div>
-          {error && (
-            <p role="alert" className="text-xs text-[#ffb08c]">
-              {error}
-            </p>
-          )}
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => render(recipe, 'bake')}
-              className="studio-action text-[#F27D26] font-bold"
-            >
-              Bake {params.resolution} × {params.resolution}
-            </button>
-            {progress && (
-              <>
-                <div className="flex justify-between gap-2 items-center text-xs">
-                  <span role="status">{progress.stage}</span>
-                  <button className="underline text-white" type="button" onClick={cancel}>
-                    Cancel render
-                  </button>
-                </div>
-                <progress
-                  aria-label="Material render progress"
-                  max={1}
-                  value={progress.fraction}
-                  className="w-full h-1 accent-[#F27D26]"
-                />
-              </>
-            )}
-            <p className="text-[11px]">
-              Edits preview at {Math.min(params.resolution, 512)} px. Bake for full-resolution export.
-            </p>
-          </div>
-        </div>
-        <section className="studio-swatch" aria-label="Material preview">
-          <Suspense
-            fallback={
-              <p role="status" className="m-auto">
-                Loading 3D preview…
-              </p>
-            }
+        <div className="document-actions">
+          <button
+            type="button"
+            className="ui-icon file-action"
+            aria-label="Load recipe"
+            title="Open recipe (Ctrl/⌘ O)"
+            onClick={() => fileInput.current?.click()}
           >
-            {material ? (
-              <Viewport3D material={material} />
-            ) : (
-              <p className="m-auto text-xs">Preparing material preview…</p>
-            )}
-          </Suspense>
-        </section>
-        <MapInspector material={material} />
-      </main>
+            <FolderOpen size={16} />
+          </button>
+          <button
+            type="button"
+            className="ui-icon file-action"
+            aria-label="Save recipe"
+            title="Save recipe (Ctrl/⌘ S)"
+            onClick={saveRecipe}
+          >
+            <Save size={16} />
+          </button>
+          <span className="tool-divider file-action" />
+          <button
+            type="button"
+            aria-label="Undo"
+            title="Undo (Ctrl/⌘ Z)"
+            className="ui-icon"
+            disabled={!history.past.length}
+            onClick={() => dispatch({ type: 'undo' })}
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Redo"
+            title="Redo (Ctrl/⌘ Shift Z)"
+            className="ui-icon"
+            disabled={!history.future.length}
+            onClick={() => dispatch({ type: 'redo' })}
+          >
+            <Redo2 size={16} />
+          </button>
+        </div>
+        <div className="build-actions">
+          <label className="resolution-picker">
+            <span className="sr-only">Bake resolution</span>
+            <select
+              id="resolution-select"
+              value={resolution}
+              title="Bake resolution"
+              onChange={(e) =>
+                addRecipe(
+                  createGenerationRecipe(
+                    { ...recipe.params, palette: [...recipe.params.palette], resolution: Number(e.target.value) },
+                    recipe.version,
+                  ),
+                  'resolution',
+                )
+              }
+            >
+              {(sizes.includes(resolution) ? sizes : [resolution, ...sizes]).map((value) => (
+                <option key={value} value={value}>
+                  {value} px
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="ui-button primary-button bake-button"
+            aria-label={`Bake ${resolution} × ${resolution}`}
+            title="Bake material (Ctrl/⌘ Enter)"
+            onClick={() => render(recipe, 'bake')}
+          >
+            <Hammer size={15} />
+            <span>Bake</span>
+          </button>
+          <button
+            type="button"
+            className="ui-button export-button"
+            aria-label="Export maps"
+            onClick={() => setModal('export')}
+          >
+            <ArrowDownToLine size={15} />
+            <span>Export</span>
+          </button>
+        </div>
+        <div className="layout-tools">
+          <button
+            type="button"
+            className="dock-switch"
+            aria-label="Material library"
+            aria-pressed={layout.library || layout.drawer === 'library'}
+            title="Material library"
+            onClick={() => layout.toggle('library')}
+          >
+            <PanelLeft size={16} />
+            <span>Library</span>
+          </button>
+          <button
+            type="button"
+            className="dock-switch"
+            aria-label="Properties"
+            aria-pressed={layout.properties || layout.drawer === 'properties'}
+            title="Properties"
+            onClick={() => layout.toggle('properties')}
+          >
+            <PanelRight size={16} />
+            <span>Properties</span>
+          </button>
+        </div>
+      </header>
+      <div
+        className="workbench"
+        style={
+          {
+            '--library-w': `${layout.layout.libraryWidth}px`,
+            '--properties-w': `${layout.layout.propertiesWidth}px`,
+          } as CSSProperties
+        }
+      >
+        {layout.library && (
+          <>
+            <aside id="studio-library" className="library-dock">
+              {library}
+            </aside>
+            <DockResize
+              side="library"
+              width={layout.layout.libraryWidth}
+              onChange={(v) => layout.resize('library', v)}
+              onCommit={(v) => layout.saveWidth('library', v)}
+            />
+          </>
+        )}
+        <main aria-label="Material workspace" className="workbench-main">
+          <MaterialWorkspace material={material} focused={layout.focused} onToggleFocus={layout.toggleFocus} />
+        </main>
+        {layout.properties && (
+          <>
+            <DockResize
+              side="properties"
+              width={layout.layout.propertiesWidth}
+              onChange={(v) => layout.resize('properties', v)}
+              onCommit={(v) => layout.saveWidth('properties', v)}
+            />
+            <aside id="studio-properties" className="properties-dock">
+              {properties}
+            </aside>
+          </>
+        )}
+      </div>
+      <footer className="status-line" aria-hidden={modal || layout.drawer ? true : undefined}>
+        <div className="session-status" role={statusError ? 'alert' : 'status'}>
+          <i className={statusError ? 'state-error' : progress ? 'state-working' : 'state-ready'} />
+          {statusError || (progress ? progress.stage : notice || 'Ready')}
+          {importError && !error && (
+            <button
+              type="button"
+              className="ui-icon"
+              aria-label="Dismiss import error"
+              onClick={() => setImportError('')}
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        {progress && (
+          <div className="progress-track">
+            <progress aria-label="Material render progress" max={1} value={progress.fraction} />
+            <button className="ui-icon" type="button" aria-label="Cancel render" title="Cancel render" onClick={cancel}>
+              <X size={13} />
+            </button>
+          </div>
+        )}
+        {!progress && material && (
+          <span className="bake-state">
+            {output === 'Full-resolution bake' ? 'Baked' : output === 'Previous render' ? 'Previous render' : 'Preview'}
+            <b>{material.recipe.params.resolution} px</b>
+          </span>
+        )}
+        <span className="status-engine">{recipe.version === 2 ? 'Studio v2' : 'Legacy v1'}</span>
+        <code className="status-id">{id}</code>
+        <button
+          className="ui-icon shortcut-button"
+          type="button"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+          onClick={() => setModal('shortcuts')}
+        >
+          <Keyboard size={15} />
+        </button>
+      </footer>
+      <input
+        ref={fileInput}
+        className="sr-only"
+        type="file"
+        tabIndex={-1}
+        aria-label="Load recipe JSON"
+        accept=".json,application/json"
+        onChange={(e) => {
+          void importRecipe(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+      {layout.drawer && (
+        <Dialog
+          placement={layout.drawer === 'library' ? 'left' : 'right'}
+          title={layout.drawer === 'library' ? 'Material library' : 'Properties'}
+          hideHeader
+          onClose={layout.closeDrawer}
+        >
+          {layout.drawer === 'library' ? library : properties}
+        </Dialog>
+      )}
+      {modal === 'save' && <SaveMaterial name={documentName} onSave={saveLocal} onClose={() => setModal(null)} />}
+      {modal === 'shortcuts' && (
+        <Dialog title="Keyboard shortcuts" onClose={() => setModal(null)}>
+          <div className="shortcut-list">
+            {[
+              ['Open recipe', 'Ctrl / ⌘ O'],
+              ['Save recipe', 'Ctrl / ⌘ S'],
+              ['Find materials', 'Ctrl / ⌘ K'],
+              ['Bake material', 'Ctrl / ⌘ Enter'],
+              ['Undo', 'Ctrl / ⌘ Z'],
+              ['Redo', 'Ctrl / ⌘ Shift Z'],
+              ['Focus workspace', 'Shift Space'],
+              ['Close dialog', 'Esc'],
+            ].map(([label, keys]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <kbd>{keys}</kbd>
+              </div>
+            ))}
+          </div>
+        </Dialog>
+      )}
+      <MaterialExports
+        material={material}
+        intendedRecipe={recipe}
+        open={modal === 'export'}
+        onClose={() => setModal(null)}
+        onBake={() => render(recipe, 'bake')}
+        progress={progress}
+        renderError={error}
+        onCancel={cancel}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Box, Circle, Focus, Layers2, Mountain, Pause, Play, Square, Sun } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react';
+import { Box, Circle, Focus, Layers2, Mountain, Pause, Play, Square, Sun, ChevronDown } from 'lucide-react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -10,7 +10,20 @@ import { createReliefMaterial, type Shading } from './preview/reliefMaterial';
 import { loadSwatchTextures, type SwatchTextures } from './preview/swatchTextures';
 import { StudioLights } from './preview/StudioLights';
 
+const axes = ['x', 'y', 'z'] as const;
+type Axis = (typeof axes)[number];
+interface CameraMemory {
+  shape?: SwatchShape;
+  frame: number;
+  ratio: number;
+  direction: THREE.Vector3;
+  target: THREE.Vector3;
+}
+
 interface SceneProps {
+  memory: CameraMemory;
+  axis: Axis | null;
+  gizmo: RefObject<HTMLFieldSetElement | null>;
   material: CompletedMaterial;
   shape: SwatchShape;
   shading: Shading;
@@ -65,7 +78,21 @@ function useTextures(material: CompletedMaterial, onError: SceneProps['onError']
   return textures;
 }
 
-function Scene({ material, shape, shading, rotating, raking, azimuth, gain, frame, onError, onDisplay }: SceneProps) {
+function Scene({
+  material,
+  shape,
+  shading,
+  rotating,
+  raking,
+  azimuth,
+  gain,
+  frame,
+  onError,
+  onDisplay,
+  memory,
+  axis,
+  gizmo,
+}: SceneProps) {
   const { camera, gl, invalidate, size, viewport, setDpr } = useThree();
   const textures = useTextures(material, onError);
   const [orbiting, setOrbiting] = useState(false);
@@ -86,6 +113,32 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
   );
   const orbitOffset = useMemo(() => new THREE.Vector3(), []);
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
+  const fitDistance = useRef(0);
+  const projected = useMemo(() => new THREE.Vector3(), []);
+  const inverse = useMemo(() => new THREE.Quaternion(), []);
+  const rememberView = () => {
+    const orbit = controls.current;
+    if (!orbit || !fitDistance.current) return;
+    memory.target.copy(orbit.target);
+    memory.direction.copy(camera.position).sub(orbit.target);
+    memory.ratio = memory.direction.length() / fitDistance.current;
+    memory.direction.normalize();
+    if (!gizmo.current) return;
+    inverse.copy(camera.quaternion).invert();
+    for (const key of axes) {
+      projected.set(0, 0, 0);
+      projected[key] = 1;
+      projected.applyQuaternion(inverse);
+      const x = projected.x * 21;
+      const y = -projected.y * 21;
+      const style = gizmo.current.style;
+      style.setProperty(`--${key}-x`, `${x}px`);
+      style.setProperty(`--${key}-y`, `${y}px`);
+      style.setProperty(`--${key}-length`, `${Math.hypot(x, y)}px`);
+      style.setProperty(`--${key}-angle`, `${Math.atan2(y, x)}rad`);
+      style.setProperty(`--${key}-order`, String(Math.round(projected.z * 10) + 12));
+    }
+  };
   useLayoutEffect(
     () => () => {
       geometry.surface.dispose();
@@ -126,9 +179,8 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
     gl.shadowMap.needsUpdate = true;
     invalidate();
   });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: A new frame request explicitly resets the current camera.
   useLayoutEffect(() => {
-    if (!(camera instanceof THREE.PerspectiveCamera) || !controls.current) return;
+    if (!(camera instanceof THREE.PerspectiveCamera) || !controls.current || size.width < 1 || size.height < 1) return;
     // Fit projected vertices to both screen axes. A portrait viewport and a shallow
     // desktop window should give the sample the same prominence.
     const direction = (
@@ -154,11 +206,30 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
           ),
       );
     }
-    camera.position.copy(target).addScaledVector(direction, distance);
+    // Distances are relative to the framing envelope. A changed pane width or a
+    // freshly created WebGL context preserves the artist's pan, orbit and zoom.
+    const restore = memory.shape === shape && memory.frame === frame;
+    if (restore) {
+      target.copy(memory.target);
+      direction.copy(memory.direction);
+    } else if (axis) {
+      direction.set(axis === 'x' ? 1 : 0.0001, axis === 'y' ? 1 : 0.032, axis === 'z' ? 1 : 0.0001).normalize();
+    }
+    // The first fit runs in a layout effect, before OrbitControls subscribes to
+    // change events. Seed the saved pose directly so the first texture upload
+    // and a second StrictMode layout pass both restore a valid camera direction.
+    const ratio = restore ? memory.ratio : 1;
+    memory.ratio = ratio;
+    memory.direction.copy(direction);
+    memory.target.copy(target);
+    fitDistance.current = distance;
+    camera.position.copy(target).addScaledVector(direction, distance * ratio);
+    memory.shape = shape;
+    memory.frame = frame;
     controls.current.target.copy(target);
     controls.current.update();
     invalidate();
-  }, [camera, shape, geometry, size.width, size.height, frame, invalidate]);
+  }, [camera, shape, geometry, size.width, size.height, frame, axis, memory, invalidate]);
   useFrame((_, dt) => {
     if (motion && motionLevel < 2 && (rotating || timing.current.frames < 8)) {
       const now = performance.now();
@@ -217,6 +288,7 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
       <OrbitControls
         ref={controls}
         makeDefault
+        onChange={rememberView}
         enableDamping={false}
         onStart={() => {
           clearTimeout(orbitTimer.current);
@@ -247,7 +319,15 @@ const shapes = [
   { value: 'plane', label: 'Plane', icon: Square },
 ] as const;
 
-export function Viewport3D({ material }: { material: CompletedMaterial }) {
+export function Viewport3D({
+  material,
+  active = true,
+  onUnavailable,
+}: {
+  material: CompletedMaterial;
+  active?: boolean;
+  onUnavailable?: () => void;
+}) {
   const [shape, setShape] = useState<SwatchShape>('plate');
   const [shading, setShading] = useState<Shading>('material');
   const [raking, setRaking] = useState(false);
@@ -255,50 +335,57 @@ export function Viewport3D({ material }: { material: CompletedMaterial }) {
   const [enhanced, setEnhanced] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [frame, setFrame] = useState(0);
+  const [axis, setAxis] = useState<Axis | null>(null);
   const [displaySize, setDisplaySize] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [available, setAvailable] = useState<boolean | null>(null);
   const checked = useRef(false);
+  const [keepWarm, setKeepWarm] = useState(false);
+  const resident = useRef(material.recipe);
   useEffect(() => {
-    if (checked.current) return;
+    const compactDisplay = window.matchMedia('(max-width: 700px), (pointer: coarse)');
+    const syncDisplay = () => {
+      if (compactDisplay.matches) setKeepWarm(false);
+      else if (active) setKeepWarm(true);
+    };
+    if (active) resident.current = material.recipe;
+    syncDisplay();
+    compactDisplay.addEventListener('change', syncDisplay);
+    // Leave a short window for desktop A/B inspection. Hidden workspaces do no
+    // GPU work; a different bake, a narrow/touch display or inactivity releases the scene.
+    const timer = active ? undefined : window.setTimeout(() => setKeepWarm(false), 30_000);
+    return () => {
+      compactDisplay.removeEventListener('change', syncDisplay);
+      window.clearTimeout(timer);
+    };
+  }, [active, material.recipe]);
+  const gizmo = useRef<HTMLFieldSetElement>(null);
+  const memory = useMemo<CameraMemory>(
+    () => ({ frame: -1, ratio: 1, direction: new THREE.Vector3(), target: new THREE.Vector3() }),
+    [],
+  );
+  useEffect(() => {
+    if (checked.current || !active) return;
     checked.current = true;
+    let hasContext = false;
     try {
       const context = document.createElement('canvas').getContext('webgl2', { antialias: true });
-      setAvailable(Boolean(context));
+      hasContext = Boolean(context);
       context?.getExtension('WEBGL_lose_context')?.loseContext();
     } catch {
-      setAvailable(false);
+      hasContext = false;
     }
-  }, []);
+    setAvailable(hasContext);
+    if (!hasContext) onUnavailable?.();
+  }, [active, onUnavailable]);
+  if (!active && (!keepWarm || available !== true || resident.current !== material.recipe)) return null;
+  function frameView(nextAxis: Axis | null) {
+    setAxis(nextAxis);
+    setFrame((value) => value + 1);
+  }
   return (
-    <div className="swatch-viewport">
-      <header className="swatch-tools">
-        <h2>Material viewport</h2>
-        <fieldset aria-label="Preview mesh" className="swatch-choices">
-          {shapes.map(({ label, value, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              title={label}
-              aria-label={label}
-              aria-pressed={shape === value}
-              onClick={() => setShape(value)}
-            >
-              <Icon size={16} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </fieldset>
-        <label className="swatch-shading">
-          <span>Shading</span>
-          <select aria-label="Shading" value={shading} onChange={(e) => setShading(e.target.value as Shading)}>
-            <option value="material">Material</option>
-            <option value="clay">Clay</option>
-            <option value="height">Height</option>
-          </select>
-        </label>
-      </header>
-      <div className="swatch-stage">
+    <div className="mw-scene">
+      <div className="mw-scene-stage">
         {available === false && unavailable}
         {available && (
           <ErrorBoundary fallback={unavailable}>
@@ -306,7 +393,7 @@ export function Viewport3D({ material }: { material: CompletedMaterial }) {
               camera={{ position: [2, 4, 4], fov: 33, near: 0.04, far: 90 }}
               dpr={[1, 1.75]}
               shadows={{ type: THREE.PCFShadowMap, autoUpdate: false }}
-              frameloop={rotating ? 'always' : 'demand'}
+              frameloop={!active ? 'never' : rotating ? 'always' : 'demand'}
               gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
               onCreated={({ gl }) => {
                 gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -317,25 +404,80 @@ export function Viewport3D({ material }: { material: CompletedMaterial }) {
                 material={material}
                 shape={shape}
                 shading={shading}
+                rotating={active && rotating}
                 raking={raking}
                 azimuth={azimuth}
                 gain={enhanced ? 6 : 1}
-                rotating={rotating}
                 frame={frame}
+                axis={axis}
+                memory={memory}
+                gizmo={gizmo}
                 onError={setError}
                 onDisplay={setDisplaySize}
               />
             </Canvas>
           </ErrorBoundary>
         )}
+        {available && (
+          <>
+            <div className="mw-geometry-tools">
+              <fieldset className="mw-mesh" aria-label="Preview mesh">
+                {shapes.map(({ label, value, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={label}
+                    title={label}
+                    aria-pressed={shape === value}
+                    onClick={() => {
+                      setAxis(null);
+                      setShape(value);
+                    }}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </fieldset>
+              <label className="mw-shader">
+                <select
+                  aria-label="Shading"
+                  title="Shading"
+                  value={shading}
+                  onChange={(e) => setShading(e.target.value as Shading)}
+                >
+                  <option value="material">Material</option>
+                  <option value="clay">Clay</option>
+                  <option value="height">Height</option>
+                </select>
+                <ChevronDown size={12} aria-hidden="true" />
+              </label>
+            </div>
+            <fieldset className="mw-axis" ref={gizmo} aria-label="Axis views">
+              {axes.map((key) => (
+                <div className={`mw-axis-arm mw-axis-${key}`} key={key}>
+                  <span aria-hidden="true" />
+                  <button
+                    type="button"
+                    title={`View from +${key.toUpperCase()}`}
+                    aria-label={`View from +${key.toUpperCase()}`}
+                    onClick={() => frameView(key)}
+                  >
+                    {key.toUpperCase()}
+                  </button>
+                </div>
+              ))}
+            </fieldset>
+          </>
+        )}
         {error && (
-          <p role="alert" className="swatch-error">
+          <p role="alert" className="mw-render-error">
             {error}
           </p>
         )}
       </div>
-      <footer className="swatch-footer">
-        <div className="swatch-choices">
+      <footer className="mw-light-bar">
+        <div className="mw-inspect-toggles">
           <button
             type="button"
             aria-label="Raking light"
@@ -343,8 +485,8 @@ export function Viewport3D({ material }: { material: CompletedMaterial }) {
             aria-pressed={raking}
             onClick={() => setRaking((v) => !v)}
           >
-            <Sun size={15} />
-            Raking light
+            <Sun size={15} aria-hidden="true" />
+            <span>Raking light</span>
           </button>
           <button
             type="button"
@@ -353,40 +495,43 @@ export function Viewport3D({ material }: { material: CompletedMaterial }) {
             aria-pressed={enhanced}
             onClick={() => setEnhanced((v) => !v)}
           >
-            <Mountain size={15} />
-            6× relief
-          </button>
-          <button
-            type="button"
-            aria-label="Rotate preview"
-            title="Rotate preview"
-            aria-pressed={rotating}
-            onClick={() => setRotating((v) => !v)}
-          >
-            {rotating ? <Pause size={15} /> : <Play size={15} />}
-          </button>
-          <button
-            type="button"
-            aria-label="Frame material"
-            title="Frame material"
-            onClick={() => setFrame((v) => v + 1)}
-          >
-            <Focus size={15} />
+            <Mountain size={15} aria-hidden="true" />
+            <span>6× relief</span>
           </button>
         </div>
-        <label className="swatch-azimuth">
+        <label className="mw-light-angle">
           <span>Light angle</span>
           <input
             type="range"
+            aria-label="Light angle"
             min={-180}
             max={180}
             step={5}
             value={azimuth}
             aria-valuetext={`${azimuth} degrees`}
-            onChange={(event) => setAzimuth(event.target.valueAsNumber)}
+            onChange={(e) => setAzimuth(e.target.valueAsNumber)}
           />
+          <output aria-hidden="true">{azimuth}°</output>
         </label>
-        <span className="swatch-resolution">{displaySize && `${displaySize} px`}</span>
+        <div className="mw-camera-actions">
+          <button
+            type="button"
+            aria-label="Rotate preview"
+            title={rotating ? 'Pause orbit' : 'Orbit preview'}
+            aria-pressed={rotating}
+            onClick={() => setRotating((v) => !v)}
+          >
+            {rotating ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+          <button type="button" aria-label="Frame material" title="Frame material" onClick={() => frameView(null)}>
+            <Focus size={16} />
+          </button>
+        </div>
+        {displaySize && (
+          <span className="mw-gpu-size" title="Viewport texture resolution">
+            {displaySize} px
+          </span>
+        )}
       </footer>
     </div>
   );

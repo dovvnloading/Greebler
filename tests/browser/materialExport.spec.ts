@@ -16,6 +16,7 @@ const { validateBytes } = createRequire(import.meta.url)('gltf-validator') as {
 };
 
 test('inspects seven channels and exports the displayed bake for glTF, Unreal and HDRP', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.getContext, {
       apply(target, canvas, args) {
@@ -24,13 +25,16 @@ test('inspects seven channels and exports the displayed bake for glTF, Unreal an
     });
   });
   await page.goto('/');
+  const channels = page.getByRole('group', { name: 'Texture channel' });
+  await channels.getByRole('button', { name: 'Albedo', exact: true }).click();
   const inspector = page.getByRole('region', { name: 'Map inspector' });
-  const download = page.getByRole('button', { name: 'Download material ZIP' });
-  await expect(download).toBeEnabled();
   await inspector.getByRole('button', { name: '2×2', exact: true }).click();
   await expect(inspector.locator('img')).toHaveCount(4);
   await inspector.getByRole('button', { name: '1:1', exact: true }).click();
   await expect(inspector.locator('img')).toHaveCount(1);
+  const native = inspector.getByRole('region', { name: 'Full-resolution texture, scroll to inspect' });
+  await native.evaluate((region) => region.scrollTo({ left: 24 }));
+  await expect.poll(() => native.evaluate((region) => region.scrollLeft)).toBe(24);
 
   const hashes: Record<string, string> = {};
   for (const [key, label] of Object.entries({
@@ -42,7 +46,7 @@ test('inspects seven channels and exports the displayed bake for glTF, Unreal an
     ao: 'AO',
     orm: 'ORM',
   })) {
-    await inspector.getByRole('button', { name: label, exact: true }).click();
+    await channels.getByRole('button', { name: label, exact: true }).click();
     hashes[key] = await inspector.getByRole('img', { name: `${key} map`, exact: true }).evaluate(async (img) => {
       const source = img.getAttribute('src');
       if (!source) throw new Error('Missing map image source.');
@@ -51,6 +55,9 @@ test('inspects seven channels and exports the displayed bake for glTF, Unreal an
       return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');
     });
   }
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
+  const download = page.getByRole('button', { name: 'Download material ZIP' });
+  await expect(download).toBeEnabled();
   const pending = page.waitForEvent('download');
   await download.click();
   const archive = await pending;

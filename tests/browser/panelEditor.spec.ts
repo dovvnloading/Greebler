@@ -6,12 +6,17 @@ import { TILE } from '../../src/engine/surfacePrimitives';
 import { getGenerationRecipeId, parseGenerationRecipe } from '../../src/recipes';
 import { readStudioPixels } from '../readStudioPixels';
 
-async function exportedFiles(page: Page) {
+async function exportedFiles(page: Page, recipeId: string) {
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
+  const exports = page.getByRole('dialog', { name: 'Export material' });
+  await expect(exports).toContainText(recipeId);
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download material ZIP' }).click();
   const file = await pending;
   const path = await file.path();
   if (!path) throw new Error('Missing material archive.');
+  await page.keyboard.press('Escape');
+  await expect(exports).toBeHidden();
   return unzipSync(await readFile(path));
 }
 
@@ -35,11 +40,9 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
   expect(slot).toBeDefined();
   await page.goto('/');
   await page
-    .getByLabel('Load recipe JSON')
+    .getByLabel('Load recipe JSON', { exact: true })
     .setInputFiles({ name: 'test.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(recipe)) });
-  const exports = page.getByRole('region', { name: 'Material exports' });
-  await expect(exports).toContainText(getGenerationRecipeId(recipe));
-  const before = await exportedFiles(page);
+  const before = await exportedFiles(page, getGenerationRecipeId(recipe));
   await page.getByText('Panel components', { exact: true }).click();
   const fragments = page
     .getByRole('group', { name: 'Pick a material panel' })
@@ -52,8 +55,7 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
   const changed = parseGenerationRecipe(
     JSON.stringify({ ...recipe, params: { ...recipe.params, panelOverrides: { [slot.id]: 'controller' } } }),
   );
-  await expect(exports).toContainText(getGenerationRecipeId(changed));
-  const after = await exportedFiles(page);
+  const after = await exportedFiles(page, getGenerationRecipeId(changed));
   expect(JSON.parse(new TextDecoder().decode(after['recipe.json']))).toEqual(changed);
   const within = (value: number, start: number, length: number, halo: number) =>
     [value - TILE, value, value + TILE].some((v) => v >= start - halo && v < start + length + halo);
@@ -81,13 +83,14 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
     expect(outside, map).toBe(0);
   }
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(exports).toContainText(getGenerationRecipeId(recipe));
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Export material' })).toContainText(getGenerationRecipeId(recipe));
+  await page.keyboard.press('Escape');
   await expect(page.getByLabel('Fitted component')).toHaveValue('');
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await expect(page.getByLabel('Fitted component')).toHaveValue('controller');
   await page.getByRole('button', { name: 'Reset all panels', exact: true }).click();
-  await expect(exports).toContainText(getGenerationRecipeId(recipe));
-  const reset = await exportedFiles(page);
+  const reset = await exportedFiles(page, getGenerationRecipeId(recipe));
   for (const name of Object.keys(before).filter((name) => name.startsWith('maps/'))) {
     expect(Buffer.compare(reset[name], before[name]), name).toBe(0);
   }

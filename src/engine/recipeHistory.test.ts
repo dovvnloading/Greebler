@@ -24,3 +24,21 @@ it('coalesces slider gestures, bounds history, and drops redo after a competing 
   expect(state.past).toHaveLength(32);
   expect(edit(state, 39, 80_000)).toBe(state);
 });
+
+it('restores the document name and library selection as well as the recipe through undo and redo', () => {
+  const base = parseGenerationRecipe(JSON.stringify(original));
+  const first = { name: 'Factory deck', recipeId: 'deck', assetId: 'factory' };
+  const other = { name: 'Named copy', recipeId: 'copy', assetId: 'saved' };
+  const initial: RecipeHistory = { current: base, source: first, past: [], future: [], time: 0 };
+  const changed = { ...base, params: { ...base.params, seed: 65 } };
+  const edited = recipeHistory(initial, { type: 'edit', recipe: changed, time: 1 });
+  const opened = recipeHistory(edited, { type: 'edit', recipe: base, source: other, time: 2 });
+  const back = recipeHistory(opened, { type: 'undo' });
+  expect(back.current).toEqual(changed);
+  expect(back.source).toEqual(first);
+  expect(recipeHistory(back, { type: 'redo' }).source).toEqual(other);
+
+  const sameRecipe = recipeHistory(initial, { type: 'edit', recipe: base, source: other, time: 3 });
+  expect(sameRecipe.source).toEqual(other);
+  expect(recipeHistory(sameRecipe, { type: 'undo' }).source).toEqual(first);
+});

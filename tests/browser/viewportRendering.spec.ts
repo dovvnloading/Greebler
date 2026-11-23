@@ -70,6 +70,9 @@ async function loadPlate(page: Page) {
 
 test('light angle and raking light change the material at a fixed camera angle', async ({ page }) => {
   const { canvas, errors, base } = await loadPlate(page);
+  // A cold canvas should already show the same framed specimen the artist gets from Frame.
+  await page.getByRole('button', { name: 'Frame material', exact: true }).click();
+  await expect.poll(async () => differingPixels(base, await sampleSurface(canvas))).toBeLessThan(0.05);
   const angle = page.getByRole('slider', { name: 'Light angle', exact: true });
   await angle.fill('110');
   await expect.poll(async () => differingPixels(base, await sampleSurface(canvas))).toBeGreaterThan(0.15);
@@ -149,6 +152,21 @@ test('mobile viewport keeps the mesh visible and frames it again after orbiting'
   await page.mouse.up();
   await expect.poll(bufferSize).toEqual(restingSize);
   await expect.poll(async () => differingPixels(framed, await sampleSurface(canvas))).toBeGreaterThan(0.25);
+  const orbited = await sampleSurface(canvas);
+  await page.getByRole('button', { name: '2D view', exact: true }).click();
+  await expect(canvas).toHaveCount(0);
+  const inspector = page.getByRole('region', { name: 'Map inspector' });
+  const nativeScale = inspector.getByRole('button', { name: '1:1', exact: true });
+  await nativeScale.click();
+  const nativePixels = inspector.getByRole('region', { name: 'Full-resolution texture, scroll to inspect' });
+  await nativePixels.evaluate((node) => node.scrollTo({ left: 24 }));
+  await expect.poll(() => nativePixels.evaluate((node) => node.scrollLeft)).toBe(24);
+  await page.getByRole('button', { name: '3D view', exact: true }).click();
+  await expect(canvas).toBeVisible();
+  await expect.poll(async () => differingPixels(orbited, await sampleSurface(canvas))).toBeLessThan(0.06);
   await page.getByRole('button', { name: 'Frame material', exact: true }).click();
   await expect.poll(async () => differingPixels(framed, await sampleSurface(canvas))).toBeLessThan(0.06);
+  await page.getByRole('button', { name: '2D view', exact: true }).click();
+  await expect(nativeScale).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => nativePixels.evaluate((node) => node.scrollLeft)).toBe(24);
 });

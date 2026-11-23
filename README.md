@@ -2,17 +2,17 @@
 
 Greebler is a procedural hard-surface material editor. Build repeating service panels and circuit assemblies, inspect their relief under studio or raking light, and export the same material from an artist workstation or a build job. [Open the editor](https://dovvnloading.github.io/Greebler/)
 
-![Previous and current WebGL material viewports, including a comparison with a matched mesh and camera](docs/viewport-comparison.webp)
-
-The camera-matched comparison uses the same service-deck height recipe, tessellation and physical scale in both viewports. The default views show how the included materials open in the editor. [Service deck recipe](examples/service-deck.json) · [Relay board recipe](examples/relay-board.json)
+![The Greebler editor with the material library, viewport, texture set and properties dock](docs/workspace.webp)
 
 ## Author a material
 
-1. Choose a material preset or edit the default Tech material. Large Panels, Medium Details and Small Greebles control the population of the assembly. The main seed sets the layout. Open **Variation seeds** to change the fitted components or the machining finish independently. Open **Panel components** to select a specific bay on the tile and fit a cover, radiator, terminal block or controller board. Overrides are saved in the recipe and can be undone individually.
-2. Adjust the palette, gap size, edge wear, normal strength and occlusion. Undo and redo are available from the toolbar or with Ctrl/⌘ Z and Ctrl/⌘ Shift Z. The editor restores the last accepted recipe on reload. **Save recipe** writes a portable JSON file.
-3. Orbit the beveled plate to inspect its displaced surface and edge. Use **Light angle** to sweep the studio light and reflections across a stationary part. **Raking light** reveals shallow tooling. Choose **Clay** to judge the shape without paint or metal variation, or **Height** to inspect the field directly. **6× relief** exaggerates the slopes and silhouette for inspection. **Frame material** resets the camera. The cube, sphere and plane provide additional checks for corners, poles and flat tiling.
-4. Edits generate a preview up to 512 px. Press **Bake** for full-size exports. The viewport displays the completed maps at native size through 2048 px and filters larger bakes to 2048 px for the GPU. Its footer shows the uploaded texture size. In the map inspector, **2×2** shows joins across neighboring tiles and **1:1** shows the completed bake at native resolution. **Export maps** shows the dimensions and recipe ID of the last completed result. Canceling or failing a bake preserves that result.
-5. Choose an export target and download the ZIP. Individual PNGs are also available. Version 1 recipes keep their original five maps and recipe IDs. Their package includes derived occlusion and ORM, and the glTF swatch leaves the legacy gradient normal unbound.
+1. Choose **Service deck** or **Relay board** from the material library, open a recipe file, or start with the current material. **Save to library** keeps a named variant in this browser. **Save recipe** downloads portable JSON. [Service deck recipe](examples/service-deck.json) · [Relay board recipe](examples/relay-board.json)
+2. In **Properties**, set the seed, panel density, gap size and surface finish. Enter an exact numeric value or drag its slider. **Variation seeds** change fitted components and finish independently. **Panel components** lets you select a bay on the tile and fit a cover, radiator, terminal block or controller board. The palette accepts hex colors and supports reordering. Undo and redo are in the toolbar.
+3. Orbit the specimen, sweep **Light angle**, or choose **Clay** and **Raking light** to inspect its shape. Select an axis on the orientation control to align the camera. **Frame material** restores the starting view. [Matched viewport renders](docs/viewport-comparison.webp)
+4. Click a channel in **Texture set** to open the map. **Split** shows the map beside the shaded material. **2×2** reveals tile boundaries, and **1:1** lets you pan across the completed bake at native resolution. Switching back to 3D restores the camera and shading settings.
+5. Choose a resolution and press **Bake**. Edits preview at up to 512 px. Bakes above 2048 px retain their full-size source maps and use a filtered 2048 px GPU preview. **Export** identifies the completed bake, offers individual PNGs and packages the chosen engine target. Canceling a bake keeps the last completed output.
+
+Drag a divider to resize either dock. With a divider focused, the arrow keys adjust its width and Home resets it. Dock widths and visibility survive reload. On narrow screens, the Library and Properties buttons open sheets. **Shift+Space** toggles focus mode, **Ctrl/⌘ K** finds materials, and **Ctrl/⌘ Enter** bakes. The keyboard button in the status bar lists the other commands.
 
 ## Material data and import
 
