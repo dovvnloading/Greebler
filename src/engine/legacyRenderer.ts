@@ -130,7 +130,7 @@ export class LegacyRenderer {
     const width = this.canvas.width;
     const height = this.canvas.height;
     const normalCtx = context2D(this.normalCanvas);
-    const palette = this.params.palette.map((hex) => Number.parseInt(hex.slice(1), 16));
+    const palette = this.params.palette.map((hex) => Number.parseInt(hex[0] === '#' ? hex.slice(1) : hex, 16));
     const levels = Uint32Array.from({ length: 256 }, (_, h) => palette[Math.floor((h * palette.length) / 256)]);
     const strength = 5 * this.scale;
     const rowsPerBand = Math.max(1, Math.min(128, Math.floor(131072 / width)));

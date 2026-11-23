@@ -1,24 +1,8 @@
-import type { GenerationParams } from '../recipes';
+import type { GenerationParams, PanelComponent } from '../recipes';
+import { hash, type PanelSlot, planStudioPanels, sample } from './surfaceAssembly';
 import { type Finish, type StudioLayout, SurfacePen, TILE } from './surfacePrimitives';
 
 export { paintStudioLayout, type StudioContexts, type StudioLayout } from './surfacePrimitives';
-
-// Every panel has its own random stream. Adding rivets or changing the palette does not move its neighbours.
-function seedWord(value: number) {
-  // Include both halves of a JS safe integer before entering the 32-bit mixer.
-  return (value | 0) ^ Math.imul(Math.floor(value / 0x100000000), 0x85ebca6b);
-}
-
-function hash(seed: number, index: number) {
-  let word = seedWord(seed) ^ Math.imul(seedWord(index) + 1, 0x9e3779b1);
-  word = Math.imul(word ^ (word >>> 16), 0x21f0aaad);
-  word = Math.imul(word ^ (word >>> 15), 0x735a2d97);
-  return (word ^ (word >>> 15)) >>> 0;
-}
-
-function sample(seed: number, index: number) {
-  return hash(seed, index) / 4294967296;
-}
 
 function mixColor(a: string, b: string, proportion: number) {
   const unpack = (s: string) => Number.parseInt(s.replace('#', ''), 16);
@@ -351,7 +335,14 @@ function rimWear(pen: SurfacePen, w: number, h: number, seed: number, z: number,
   }
 }
 
-function drawPanel(pen: SurfacePen, w: number, h: number, params: GenerationParams, seed: number) {
+function drawPanel(
+  pen: SurfacePen,
+  w: number,
+  h: number,
+  params: GenerationParams,
+  seed: number,
+  override?: PanelComponent,
+) {
   const inset = 1.2 + params.gapSize * 0.42;
   w -= inset * 2;
   h -= inset * 2;
@@ -377,12 +368,19 @@ function drawPanel(pen: SurfacePen, w: number, h: number, params: GenerationPara
     }
   }
 
-  const mx = 12 + Math.min(11, w * 0.04);
+  const mx = override ? Math.min(w * 0.12, 19) : 12 + Math.min(11, w * 0.04);
   const my = Math.min(20, h * 0.17);
   const iw = w - mx * 2;
   const ih = h - my * 2;
-  if (iw < 40 || ih < 13) return;
-  if (sample(detail, 9) < params.mediumDensity) {
+  if (override) {
+    // Fit the chosen assembly within the existing hatch and leave its mounting rim intact.
+    const fitted = pen.frame(mx, my);
+    if (override === 'radiator') radiator(fitted, iw, ih, z, fine);
+    if (override === 'terminal') terminalBlock(fitted, iw, ih, z, fine);
+    if (override === 'controller') circuit(fitted, iw, ih, z, fine);
+  } else if (iw < 40 || ih < 13) {
+    return;
+  } else if (sample(detail, 9) < params.mediumDensity) {
     const type = sample(detail, 10);
     // Leave an uninterrupted area on larger faces. The feature and the latch belong to the same hatch.
     const fw = Math.min(iw, iw * (0.52 + sample(detail, 11) * 0.4) + 8);
@@ -419,31 +417,14 @@ function drawPanel(pen: SurfacePen, w: number, h: number, params: GenerationPara
   if (!exposed) rimWear(pen, w, h, seed, z, params.wear ?? 0.35, key);
 }
 
-/** Split along frame rails; each child receives stable randomness independent of sibling detail. */
-function panelBay(pen: SurfacePen, w: number, h: number, params: GenerationParams, seed: number, depth = 0) {
-  const minSide = 64;
-  const maxDepth = 1 + Math.round(params.complexity * 0.5);
-  const splitAlongX = w > h;
+function fitBay(pen: SurfacePen, slot: PanelSlot, params: GenerationParams) {
+  const { w, h, seed } = slot;
   const span = Math.max(w, h);
-  const mustSplit = span > 485;
-  const room = span > minSide * 2.5 && Math.min(w, h) > 42;
-  const split = sample(seed, 0) < 0.37 + params.complexity * 0.049;
-  if (room && (mustSplit || (depth < maxDepth && split))) {
-    const length = Math.round((span * (0.35 + sample(seed, 1) * 0.28)) / 8) * 8;
-    const first = hash(seed, 2);
-    const second = hash(seed, 3);
-    if (splitAlongX) {
-      panelBay(pen, length, h, params, first, depth + 1);
-      panelBay(pen.frame(length, 0), w - length, h, params, second, depth + 1);
-    } else {
-      panelBay(pen, w, length, params, first, depth + 1);
-      panelBay(pen.frame(0, length), w, h - length, params, second, depth + 1);
-    }
-    return;
-  }
+  const splitAlongX = w > h;
   const frame = pen.frame(0, 0, !splitAlongX);
-  if (sample(seed, 19) <= params.largeDensity) {
-    drawPanel(frame, span, Math.min(w, h), params, seed);
+  const component = params.panelOverrides?.[slot.id];
+  if (component || sample(seed, 19) <= params.largeDensity) {
+    drawPanel(frame, span, Math.min(w, h), params, seed, component);
   } else if (sample(seed, 20) < params.mediumDensity) {
     // An open service bay exposes smaller backplane modules instead of a solid hatch.
     const depth = Math.min(w, h);
@@ -519,21 +500,10 @@ function serviceTrunk(pen: SurfacePen, width: number, params: GenerationParams, 
 export function createStudioLayout(params: GenerationParams): StudioLayout {
   const marks: StudioLayout[number][] = [];
   const root = new SurfacePen(marks);
-  const seed = params.seed;
   root.rect(0, 0, TILE, TILE, 29, coating(params.palette, 0.16, 167));
-  const xPhase = Math.floor(sample(seed, 91) * 128) * 8;
-  const yPhase = Math.floor(sample(seed, 92) * 128) * 8;
-  const pen = root.frame(xPhase, yPhase, sample(seed, 90) > 0.5);
-  const x = 256 + Math.floor(sample(seed, 93) * 37) * 8;
-  const y = 296 + Math.floor(sample(seed, 94) * 44) * 8;
-  const trunk = Math.round((params.style === 'electrical' ? 110 : 84) * (0.65 + params.mediumDensity * 0.45));
-  const lateral = Math.round(28 + params.mediumDensity * 24);
-  const x1 = x + trunk;
-  const y1 = y + lateral;
-  panelBay(pen, x, y, params, hash(seed, 101));
-  panelBay(pen.frame(x1, 0), TILE - x1, y, params, hash(seed, 102));
-  panelBay(pen.frame(0, y1), x, TILE - y1, params, hash(seed, 103));
-  panelBay(pen.frame(x1, y1), TILE - x1, TILE - y1, params, hash(seed, 104));
+  const { xPhase, yPhase, transpose, x, y, trunk, lateral, slots } = planStudioPanels(params);
+  const pen = root.frame(xPhase, yPhase, transpose);
+  for (const slot of slots) fitBay(pen.frame(slot.x, slot.y), slot, params);
   if (params.mediumDensity > 0) {
     serviceTrunk(pen.frame(0, y), lateral, params, true);
     serviceTrunk(pen.frame(x, 0, true), trunk, params, false);

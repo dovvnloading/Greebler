@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GenerationParams } from '../recipes';
+import { planStudioPanels } from './surfaceAssembly';
 import { createStudioLayout, type StudioLayout } from './surfaceLayout';
 import { SurfacePen, TILE } from './surfacePrimitives';
 
@@ -72,4 +73,34 @@ describe('studio surface layout', () => {
     expect(covers(sparse).length).toBeGreaterThan(0);
     expect(topology(covers(sparse))).toEqual(topology(covers(full)));
   });
+});
+
+it('retains unique, nonoverlapping panel regions across preview scales, variation seeds and local overrides', () => {
+  const original = planStudioPanels(recipe);
+  const edited = {
+    ...recipe,
+    resolution: 8192,
+    detailSeed: 77,
+    finishSeed: 31,
+    panelOverrides: { [original.slots[0].id]: 'terminal' as const },
+  };
+  expect(planStudioPanels(edited)).toEqual(original);
+  expect(createStudioLayout(edited)).not.toEqual(createStudioLayout(recipe));
+  const { slots, trunk, lateral } = original;
+  expect(new Set(slots.map((slot) => slot.id)).size).toBe(slots.length);
+  expect(slots.some((slot) => slot.regions.length > 1)).toBe(true);
+  const fragments = slots.flatMap((slot) => slot.regions);
+  let area = 0;
+  for (const [i, a] of fragments.entries()) {
+    expect(a.x).toBeGreaterThanOrEqual(0);
+    expect(a.y).toBeGreaterThanOrEqual(0);
+    expect(a.x + a.w).toBeLessThanOrEqual(TILE);
+    expect(a.y + a.h).toBeLessThanOrEqual(TILE);
+    for (const b of fragments.slice(i + 1)) {
+      expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+    }
+    area += a.w * a.h;
+  }
+  // The uncovered area belongs to the two continuous supply trunks.
+  expect(area).toBe((TILE - trunk) * (TILE - lateral));
 });

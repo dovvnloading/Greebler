@@ -2,6 +2,7 @@ import type { GenerationParams } from '../recipes';
 import type { StudioMaps } from '../TextureGenerator';
 import { context2D, makeCanvas, releaseCanvas } from './canvas';
 import { StripPng, type PngFormat } from './png';
+import type { MapWriter } from './pngWorkers';
 import { ReliefField, SurfaceFinish } from './surfaceBake';
 import { createStudioLayout, paintStudioLayout } from './surfaceLayout';
 
@@ -12,7 +13,7 @@ export interface BakeStep {
   encoded?: Promise<unknown>;
 }
 
-const formats: StudioMaps<PngFormat> = {
+export const formats: StudioMaps<PngFormat> = {
   albedo: 'srgb',
   height: 'gray16',
   normal: 'rgb',
@@ -123,7 +124,7 @@ export function stripHeight(size: number) {
 
 export function* renderStudio(
   params: GenerationParams,
-  writers: StudioMaps<StripPng>,
+  writers: StudioMaps<MapWriter>,
   capture?: (source: PreviewSource) => void,
   bandRows = stripHeight(params.resolution),
 ): Generator<BakeStep> {

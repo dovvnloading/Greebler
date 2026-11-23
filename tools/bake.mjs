@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { link, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import { link, mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -49,6 +51,7 @@ async function main() {
     jobs.set(target, recipe);
   }
   await mkdir(dir, { recursive: true });
+  let destination;
   const server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
     configFile: false,
@@ -58,6 +61,22 @@ async function main() {
       {
         name: 'batch-entry',
         configureServer(dev) {
+          dev.middlewares.use((request, response, next) => {
+            if (!destination || request.url !== destination.route || request.method !== 'POST') return next();
+            const { temp } = destination;
+            destination = undefined;
+            // Stream the Blob over loopback. No base64 or whole-archive copy crosses the automation pipe.
+            pipeline(request, createWriteStream(temp, { flags: 'wx' })).then(
+              () => {
+                response.writeHead(201);
+                response.end();
+              },
+              (error) => {
+                response.writeHead(500);
+                response.end(error.message);
+              },
+            );
+          });
           dev.middlewares.use('/bake', (_req, res) => {
             res.setHeader('Content-Type', 'text/html');
             res.end('<!doctype html><title>Material bake</title>');
@@ -73,78 +92,58 @@ async function main() {
     browser = await chromium.launch({ executablePath: process.env.GREEBLER_CHROMIUM_EXECUTABLE || undefined });
     const origin = new URL(server.resolvedUrls.local[0]).origin;
     const page = await browser.newPage();
-    await page.route(/^https?:\/\//, (route) =>
-      new URL(route.request().url()).origin === origin ? route.continue() : route.abort(),
+    await page.route(
+      (url) => (url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== origin,
+      (route) => route.abort(),
     );
     await page.goto(`${origin}/bake`);
     for (const [target, recipe] of jobs) {
       const id = getGenerationRecipeId(recipe);
       const started = performance.now();
-      const result = await page.evaluateHandle(
-        async ({ recipe, profile, measure }) => {
-          const { bakeMaterial } = await import('/src/engine/bake.ts');
-          const { buildMaterialPackage } = await import('/src/export/materialPackage.ts');
-          const start = performance.now();
-          let maximumGap = 0;
-          let previous = start;
-          const sample = () => {
-            const now = performance.now();
-            maximumGap = Math.max(maximumGap, now - previous);
-            previous = now;
-          };
-          const timer = measure ? setInterval(sample, 16) : undefined;
-          try {
-            const blobs = await bakeMaterial(recipe, new AbortController().signal, () => {});
-            const finished = performance.now();
-            sample();
-            const maximumBakeGap = maximumGap;
-            const archive = await buildMaterialPackage({ recipe, blobs }, undefined, profile);
-            return {
-              archive,
-              bakeMs: Math.round(finished - start),
-              maxBakeTimerGapMs: Math.round(maximumBakeGap),
-              packMs: Math.round(performance.now() - finished),
-            };
-          } finally {
-            clearInterval(timer);
-          }
-        },
-        { recipe, profile: values.target, measure: values.metrics },
-      );
-      const archive = await result.getProperty('archive');
-      const temp = join(dir, `.${id}-${randomUUID()}.tmp`);
+      const nonce = randomUUID();
+      const temp = join(dir, `.${id}-${nonce}.tmp`);
+      const route = `/output/${nonce}`;
+      destination = { temp, route };
       try {
-        const file = await open(temp, 'wx');
-        try {
-          const size = await archive.evaluate((blob) => blob.size);
-          // Transfer bounded chunks over Playwright's pipe, including on machines with browser downloads disabled.
-          const chunkSize = 512 * 1024;
-          for (let start = 0; start < size; start += chunkSize) {
-            const encoded = await archive.evaluate(
-              (blob, { start, chunkSize }) =>
-                new Promise((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onerror = () => reject(reader.error);
-                  reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(',') + 1));
-                  reader.readAsDataURL(blob.slice(start, start + chunkSize));
-                }),
-              { start, chunkSize },
-            );
-            await file.writeFile(Buffer.from(encoded, 'base64'));
-          }
-        } finally {
-          await file.close();
-        }
+        const timing = await page.evaluate(
+          async ({ recipe, profile, measure, route }) => {
+            const { bakeMaterial } = await import('/src/engine/bake.ts');
+            const { buildMaterialPackage } = await import('/src/export/materialPackage.ts');
+            const start = performance.now();
+            let maximumGap = 0;
+            let previous = start;
+            const sample = () => {
+              const now = performance.now();
+              maximumGap = Math.max(maximumGap, now - previous);
+              previous = now;
+            };
+            const timer = measure ? setInterval(sample, 16) : undefined;
+            let blobs;
+            try {
+              blobs = await bakeMaterial(recipe, new AbortController().signal, () => {});
+              sample();
+            } finally {
+              clearInterval(timer);
+            }
+            const finished = performance.now();
+            const archive = await buildMaterialPackage({ recipe, blobs }, undefined, profile);
+            const packed = performance.now();
+            const response = await fetch(route, { method: 'POST', body: archive });
+            if (!response.ok) throw new Error(`Could not write bake: ${response.status} ${await response.text()}`);
+            return {
+              bakeMs: Math.round(finished - start),
+              maxBakeTimerGapMs: Math.round(maximumGap),
+              packMs: Math.round(packed - finished),
+              bytes: archive.size,
+            };
+          },
+          { recipe, profile: values.target, measure: values.metrics, route },
+        );
+        if ((await stat(temp)).size !== timing.bytes) throw new Error('Incomplete archive transfer.');
         if (values.force) await rename(temp, target);
         else await link(temp, target);
         const elapsedMs = Math.round(performance.now() - started);
         if (values.metrics) {
-          const timing = await result.evaluate(({ archive, bakeMs, maxBakeTimerGapMs, packMs }) => ({
-            bakeMs,
-            maxBakeTimerGapMs,
-            packMs,
-            bytes: archive.size,
-          }));
           console.log(
             JSON.stringify({
               recipeId: id,
@@ -157,8 +156,7 @@ async function main() {
           );
         } else console.log(`${target}  ${elapsedMs} ms`);
       } finally {
-        await archive.dispose();
-        await result.dispose();
+        destination = undefined;
         await rm(temp, { force: true });
       }
     }

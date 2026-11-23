@@ -44,7 +44,7 @@ test('renders the 3D preview and regenerates the selected map size', async ({ pa
         });
         return page.evaluate(async (base64) => {
           const img = new Image();
-          img.src = 'data:image/png;base64,' + base64;
+          img.src = `data:image/png;base64,${base64}`;
           await img.decode();
           const canvas = document.createElement('canvas');
           canvas.width = img.width;

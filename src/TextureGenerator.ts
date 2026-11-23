@@ -8,8 +8,10 @@ import {
 import { context2D, canvasBlob, type RasterCanvas } from './engine/canvas';
 import { LegacyRenderer } from './engine/legacyRenderer';
 import { StripPng } from './engine/png';
+import { parallelPngWriters } from './engine/pngWorkers';
 import { ReliefField } from './engine/surfaceBake';
 import {
+  formats,
   newWriters,
   renderStudio,
   revisePreview,
@@ -24,10 +26,17 @@ export type TextureMaps<T> = { albedo: T; height: T; normal: T; roughness: T; me
 export type StudioMaps<T> = TextureMaps<T> & { ao: T; orm: T };
 type Progress = (fraction: number, stage: string) => void;
 
-async function runBands(steps: Generator<BakeStep>, signal?: AbortSignal, progress?: Progress) {
+async function runBands(steps: Generator<BakeStep>, signal?: AbortSignal, progress?: Progress, overlap = false) {
+  let previous: Promise<unknown> | undefined;
   let lastYield = performance.now();
   for (const step of steps) {
-    if (step.encoded) await step.encoded;
+    if (step.encoded && overlap) {
+      // The encoders work on the preceding strip while the raster worker paints the next.
+      // Observe failures immediately and cap each channel at two outstanding strips.
+      step.encoded.catch(() => {});
+      await previous;
+      previous = step.encoded;
+    } else if (step.encoded) await step.encoded;
     signal?.throwIfAborted();
     progress?.(step.fraction, step.stage);
     signal?.throwIfAborted();
@@ -37,6 +46,7 @@ async function runBands(steps: Generator<BakeStep>, signal?: AbortSignal, progre
       lastYield = performance.now();
     }
   }
+  await previous;
 }
 
 function dataUrl(canvas: RasterCanvas) {
@@ -171,9 +181,11 @@ export class TextureGenerator {
       lastPreview = revision;
       return { ...revision.maps };
     }
-    const writers = newWriters(params.resolution, true);
+    const parallel = await parallelPngWriters(params.resolution, formats);
+    const writers = parallel ?? newWriters(params.resolution, true);
     let captured: PreviewSource | undefined;
     try {
+      signal?.throwIfAborted();
       await runBands(
         renderStudio(
           params,
@@ -186,6 +198,7 @@ export class TextureGenerator {
         ),
         signal,
         onProgress,
+        Boolean(parallel),
       );
       signal?.throwIfAborted();
       const maps = {

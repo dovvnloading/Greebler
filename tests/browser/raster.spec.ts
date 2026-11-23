@@ -122,3 +122,54 @@ test('legacy jobs retain HTML canvas PNGs and can cancel during subdivision', as
   expect(result.cancelled).toBe(true);
   expect(result.equal).toEqual([true, true, true, true, true]);
 });
+
+test('parallel PNG encoding preserves all seven PNGs and releases its workers', async ({ page }) => {
+  await page.route('**/raster-test', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>High-resolution material bake</title>' }),
+  );
+  await page.goto('/raster-test');
+  const [parallel, fallback, aborted] = await page.evaluate(async () => {
+    const recipe: GenerationRecipe = {
+      version: 2,
+      params: {
+        style: 'tech',
+        resolution: 2048,
+        seed: 2817,
+        largeDensity: 0.7,
+        mediumDensity: 0.5,
+        smallDensity: 0.3,
+        gapSize: 3,
+        complexity: 4,
+        palette: ['#192339', '#8e877f', '#b3bbb8'],
+      },
+    };
+    interface Result {
+      hashes: string[];
+      started: number;
+      terminated: number;
+      cancelled?: boolean;
+      error?: string;
+    }
+    const render = async (block: boolean, cancel = false) => {
+      const worker = new Worker('/tests/browser/fixtures/png-workers.ts', { type: 'module' });
+      try {
+        return await new Promise<Result>((resolve, reject) => {
+          worker.onerror = (error) => reject(new Error(error.message));
+          worker.onmessage = ({ data }: MessageEvent<Result>) =>
+            data.error ? reject(new Error(data.error)) : resolve(data);
+          worker.postMessage({ block, cancel, recipe });
+        });
+      } finally {
+        worker.terminate();
+      }
+    };
+    return [await render(false), await render(true), await render(false, true)];
+  });
+  expect(parallel.started).toBe(3);
+  expect(parallel.terminated).toBe(parallel.started);
+  expect(fallback.started).toBe(0);
+  expect(aborted.cancelled).toBe(true);
+  expect(aborted.terminated).toBe(3);
+  expect(parallel.hashes).toHaveLength(7);
+  expect(parallel.hashes).toEqual(fallback.hashes);
+});

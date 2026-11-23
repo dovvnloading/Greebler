@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useRef, useReducer } from 'react';
 import {
   createGenerationRecipe,
+  convertRecipeVersion,
   generationParamsFromRecipe,
   getGenerationRecipeId,
   parseGenerationRecipe,
@@ -14,6 +15,7 @@ import relayBoard from '../examples/relay-board.json';
 import { recipeHistory } from './engine/recipeHistory';
 import { useMaterialSession } from './engine/useMaterialSession';
 import { MaterialExports } from './components/MaterialExports';
+import { PanelEditor } from './components/PanelEditor';
 import { MapInspector } from './components/MapInspector';
 import { Settings, RefreshCcw, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PALETTE_PRESETS, generatePalette } from './utils/colorUtils';
@@ -173,7 +175,7 @@ export default function App() {
             <CustomSelect
               id="renderer-select"
               value={recipe.version}
-              onChange={(version) => setRecipe(createGenerationRecipe(generationParamsFromRecipe(recipe), version))}
+              onChange={(version) => setRecipe(convertRecipeVersion(recipe, version))}
               options={[
                 { label: 'Studio v2', value: 2 },
                 { label: 'Legacy v1', value: 1 },
@@ -283,6 +285,25 @@ export default function App() {
             />
           </div>
 
+          {recipe.version === 2 && (
+            <PanelEditor
+              recipe={recipe}
+              previewUrl={
+                preview &&
+                serializeGenerationRecipe(preview.recipe) ===
+                  serializeGenerationRecipe({
+                    ...recipe,
+                    params: { ...params, resolution: preview.recipe.params.resolution },
+                  })
+                  ? preview.urls.albedo
+                  : undefined
+              }
+              onChange={(panelOverrides) =>
+                setRecipe(createGenerationRecipe({ ...generationParamsFromRecipe(recipe), panelOverrides }, 2))
+              }
+            />
+          )}
+
           {/* Resolution */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
@@ -345,7 +366,7 @@ export default function App() {
                     <input
                       aria-label={`Palette color ${idx + 1}`}
                       type="color"
-                      value={color}
+                      value={color.startsWith('#') ? color : `#${color}`}
                       onChange={(e) => {
                         const newPal = [...params.palette];
                         newPal[idx] = e.target.value;
@@ -561,12 +582,16 @@ export default function App() {
             Displacement Preview
           </div>
           <Suspense fallback={<p role="status">Loading 3D preview…</p>}>
-            <Viewport3D
-              albedoMap={preview?.urls.albedo ?? null}
-              normalMap={preview?.recipe.version === 2 ? preview.urls.normal : null}
-              heightMap={preview?.urls.height ?? null}
-              ormMap={preview?.urls.orm ?? null}
-            />
+            {preview ? (
+              <Viewport3D
+                albedoMap={preview.urls.albedo}
+                normalMap={preview.recipe.version === 2 ? preview.urls.normal : null}
+                heightMap={preview.urls.height}
+                ormMap={preview.urls.orm}
+              />
+            ) : (
+              <p className="m-auto text-xs">Preparing material preview…</p>
+            )}
           </Suspense>
         </div>
       </main>

@@ -8,7 +8,7 @@ Both swatches were rendered from the included 2048 px recipes. The upper row sho
 
 ## Author a material
 
-1. Choose a material preset or edit the default Tech material. Large Panels, Medium Details and Small Greebles control the population of the assembly. The main seed sets the layout. Open **Variation seeds** to change the fitted components or the machining finish independently.
+1. Choose a material preset or edit the default Tech material. Large Panels, Medium Details and Small Greebles control the population of the assembly. The main seed sets the layout. Open **Variation seeds** to change the fitted components or the machining finish independently. Open **Panel components** to select a specific bay on the tile and fit a cover, radiator, terminal block or controller board. Overrides are saved in the recipe and can be undone individually.
 2. Adjust the palette, gap size, edge wear, normal strength and occlusion. Undo and redo are available from the toolbar or with Ctrl/⌘ Z and Ctrl/⌘ Shift Z. The editor restores the last accepted recipe on reload. **Save recipe** writes a portable JSON file.
 3. Inspect the seven channels individually. **2×2** shows joins across neighboring tiles. **1:1** shows the completed bake at native resolution. Use the 3D view for shape, raking light, exaggerated displacement and turntable inspection.
 4. Edits generate a preview up to 512 px. Choose a resolution and press **Bake** for a full-size material. Large bakes retain a smaller GPU preview. **Export maps** shows the dimensions and recipe ID of the last completed result. Canceling or failing a bake preserves that result.
@@ -49,6 +49,30 @@ npm run bake -- --target unreal --out bakes examples/service-deck.json
 ```
 
 Use `--force` to replace existing outputs. Set `GREEBLER_CHROMIUM_EXECUTABLE` to use a locally installed Chromium. For repeatable pixel comparisons across machines, pin the browser and raster environment alongside the recipe. `--metrics` reports bake time, the longest gap in a 16 ms browser timer during the bake, package time, ZIP bytes and total time through disk write.
+
+## Measured performance
+
+A Linux headless Chromium run with nine reported hardware threads baked the default Tech material at seed 12345. A 16 ms timer on the browser page measured how long UI callbacks went unserviced. The 4K comparison used the production editors with their previews loaded. Bake times include PNG encoding.
+
+| Run | PNGs | Bake time | Longest gap in the UI timer |
+| --- | ---: | ---: | ---: |
+| Previous editor, 4096² | 5 | 2.94 s | 2.35 s |
+| Studio v2 editor, 4096² | 7 | 8.36 s | 78 ms |
+| Studio v2 engine, 8192² | 7 | 18.25 s | 92 ms |
+
+Sampled peak whole-browser proportional memory at 4K was 1774 MiB for the previous editor and 986 MiB for v2. The separate 8K run isolated the production bake worker. It produced 42.09 MiB of PNGs and reached approximately 1.06 GiB of sampled whole-browser proportional memory, including a 267 MiB starting browser. These are individual runs, and timings vary with hardware and concurrent CPU load. The richer seven-map material takes longer to finish. Editing uses the lower-resolution preview and keeps the full bake off the UI thread.
+
+## Build a Blender asset library
+
+The Blender importer accepts a ZIP, an extracted package directory or its manifest. It creates a reusable Principled material, packs the source maps into a self-contained asset, and stores the recipe with it. Set the tile width in meters to scale its displacement. The default is one meter. The importer has been exercised by saving and reopening assets in Blender 4.3.2.
+
+```bash
+blender --background --factory-startup --python-exit-code 1 \
+  --python tools/blender_material.py -- \
+  bakes/greebler-tech-2048-g2-7944419d.zip --tile-width-m 1 --out bakes/service-deck.blend
+```
+
+Add the output directory as an asset library in Blender or append the material from the file. Replacing a previous library requires `--force`.
 
 ## Build and verify
 
