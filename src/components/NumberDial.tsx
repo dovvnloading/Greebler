@@ -10,6 +10,7 @@ export const NumberDial = ({ id, value, onChange }: NumberDialProps) => (
   <div className="flex gap-3 w-full">
     <button
       type="button"
+      aria-label="Decrease seed"
       onClick={() => onChange(value - 1)}
       className="w-11 h-11 flex-shrink-0 rounded-lg neu-convex flex items-center justify-center text-[#8E9299] hover:text-[#F27D26] active:neu-pressed transition-all border border-[rgba(255,255,255,0.02)]"
     >
@@ -24,6 +25,7 @@ export const NumberDial = ({ id, value, onChange }: NumberDialProps) => (
     />
     <button
       type="button"
+      aria-label="Increase seed"
       onClick={() => onChange(value + 1)}
       className="w-11 h-11 flex-shrink-0 rounded-lg neu-convex flex items-center justify-center text-[#8E9299] hover:text-[#F27D26] active:neu-pressed transition-all border border-[rgba(255,255,255,0.02)]"
     >

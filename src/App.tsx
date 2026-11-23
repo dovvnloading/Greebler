@@ -1,12 +1,25 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
-import { TextureGenerator, type GenerationParams, type TextureMaps } from './TextureGenerator';
-import { Viewport3D } from './Viewport3D';
-import { Viewport2D } from './Viewport2D';
-import { Settings, Download, RefreshCcw, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
+import { lazy, Suspense, useState, useEffect, useRef, useReducer } from 'react';
+import {
+  createGenerationRecipe,
+  convertRecipeVersion,
+  generationParamsFromRecipe,
+  getGenerationRecipeId,
+  parseGenerationRecipe,
+  serializeGenerationRecipe,
+  DEFAULT_FINISH,
+  type GenerationParams,
+  type GenerationRecipe,
+} from './recipes';
+import serviceDeck from '../examples/service-deck.json';
+import relayBoard from '../examples/relay-board.json';
+import { recipeHistory } from './engine/recipeHistory';
+import { useMaterialSession } from './engine/useMaterialSession';
+import { MaterialExports } from './components/MaterialExports';
+import { PanelEditor } from './components/PanelEditor';
+import { MapInspector } from './components/MapInspector';
+import { Settings, RefreshCcw, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PALETTE_PRESETS, generatePalette } from './utils/colorUtils';
 import { SliderControl } from './components/SliderControl';
-import { ExportButton } from './components/ExportButton';
-import { TabButton } from './components/TabButton';
 import { CustomSelect } from './components/CustomSelect';
 import { NumberDial } from './components/NumberDial';
 
@@ -22,112 +35,105 @@ const defaultParams: GenerationParams = {
   palette: PALETTE_PRESETS.Default,
 };
 
-function createMapUrls(blobs: TextureMaps<Blob>): TextureMaps<string> {
-  const created: string[] = [];
-  const createUrl = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    created.push(url);
-    return url;
-  };
+const Viewport3D = lazy(() => import('./Viewport3D').then((module) => ({ default: module.Viewport3D })));
+const STORAGE_KEY = 'greebler.editor.recipe';
+
+function loadEditorRecipe() {
   try {
-    return {
-      albedo: createUrl(blobs.albedo),
-      height: createUrl(blobs.height),
-      normal: createUrl(blobs.normal),
-      roughness: createUrl(blobs.roughness),
-      metalness: createUrl(blobs.metalness),
-    };
-  } catch (error) {
-    for (const url of created) URL.revokeObjectURL(url);
-    throw error;
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return parseGenerationRecipe(saved);
+  } catch {
+    // Storage is optional, including in private browsing.
   }
+  return createGenerationRecipe(defaultParams);
 }
-
-function releaseMapUrls(maps: TextureMaps<string>) {
-  for (const url of Object.values(maps)) URL.revokeObjectURL(url);
-}
-
-const emptyMaps = { albedo: null, height: null, normal: null, roughness: null, metalness: null };
 
 export default function App() {
-  const [params, setParams] = useState<GenerationParams>(defaultParams);
-  const [generatedMaps, setMaps] = useState<TextureMaps<string> | null>(null);
-  const maps = generatedMaps ?? emptyMaps;
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const activeGeneration = useRef<AbortController | null>(null);
-  const ownedMaps = useRef<TextureMaps<string>[]>([]);
-
-  // Viewport State
-  const [activeTab2D, setActiveTab2D] = useState<'albedo' | 'height' | 'normal'>('albedo');
-
-  const scheduleGeneration = useCallback((snapshot: GenerationParams, delay = 50) => {
-    activeGeneration.current?.abort();
-    const controller = new AbortController();
-    activeGeneration.current = controller;
-    const { signal } = controller;
-    setIsGenerating(true);
-    setGenerationError(null);
-    const timer = window.setTimeout(async () => {
-      try {
-        const blobs = await new TextureGenerator(snapshot).generateMapBlobs(signal);
-        if (signal.aborted) return;
-        const urls = createMapUrls(blobs);
-        ownedMaps.current.push(urls);
-        setMaps(urls);
-      } catch (error) {
-        if (!signal.aborted) {
-          setGenerationError(error instanceof Error ? error.message : 'Map generation failed unexpectedly.');
-        }
-      } finally {
-        if (!signal.aborted) {
-          activeGeneration.current = null;
-          setIsGenerating(false);
-        }
-      }
-    }, delay);
-    signal.addEventListener('abort', () => window.clearTimeout(timer), { once: true });
-  }, []);
-
-  // Keep the displayed URLs available to the preview and downloads until React commits their replacements.
-  useLayoutEffect(() => {
-    if (!generatedMaps) return;
-    const currentIndex = ownedMaps.current.indexOf(generatedMaps);
-    if (currentIndex > 0) {
-      for (const previous of ownedMaps.current.splice(0, currentIndex)) releaseMapUrls(previous);
-    }
-  }, [generatedMaps]);
-
+  const [history, dispatch] = useReducer(recipeHistory, undefined, () => ({
+    current: loadEditorRecipe(),
+    past: [],
+    future: [],
+    time: 0,
+  }));
+  const recipe = history.current;
+  const setRecipe = (next: GenerationRecipe, group?: string) =>
+    dispatch({ type: 'edit', recipe: next, group, time: performance.now() });
   useEffect(() => {
-    scheduleGeneration(defaultParams);
-    return () => {
-      activeGeneration.current?.abort();
-      for (const urls of ownedMaps.current.splice(0)) releaseMapUrls(urls);
+    const shortcut = (e: KeyboardEvent) => {
+      if (
+        !(e.ctrlKey || e.metaKey) ||
+        e.altKey ||
+        (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="true"]'))
+      )
+        return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      e.preventDefault();
+      dispatch({ type: key === 'y' || e.shiftKey ? 'redo' : 'undo' });
     };
-  }, [scheduleGeneration]);
+    window.addEventListener('keydown', shortcut);
+    return () => window.removeEventListener('keydown', shortcut);
+  }, []);
+  const params = recipe.params;
+  const { material, preview, render, progress, cancel, error } = useMaterialSession();
+  const [importError, setImportError] = useState('');
+  const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    render(recipe, 'draft');
+    try {
+      localStorage.setItem(STORAGE_KEY, serializeGenerationRecipe(recipe));
+    } catch {
+      // An unavailable local store does not block editing or exporting a recipe.
+    }
+  }, [recipe, render]);
 
   const handleParamChange = <K extends keyof GenerationParams>(key: K, value: GenerationParams[K]) => {
-    const nextParams = { ...params, [key]: value };
-    setParams(nextParams);
-    if (key === 'palette' && nextParams.palette !== params.palette) scheduleGeneration(nextParams, 100);
+    if (
+      (key === 'seed' || key === 'detailSeed' || key === 'finishSeed') &&
+      value !== undefined &&
+      !Number.isSafeInteger(value)
+    )
+      return;
+    setRecipe(createGenerationRecipe({ ...generationParamsFromRecipe(recipe), [key]: value }, recipe.version), key);
   };
 
-  const handleRandomizeSeed = () => {
-    handleParamChange('seed', Math.floor(Math.random() * 1000000));
+  const handleRandomizeSeed = () => handleParamChange('seed', crypto.getRandomValues(new Uint32Array(1))[0]);
+  const importRecipe = async (file?: File) => {
+    if (!file) return;
+    try {
+      if (file.size > 65536) throw new Error('A material recipe must be smaller than 64 KiB.');
+      const imported = parseGenerationRecipe(await file.text());
+      setImportError('');
+      setRecipe(imported);
+    } catch (cause) {
+      setImportError(cause instanceof Error ? cause.message : 'Could not read the recipe.');
+    }
   };
-
-  const downloadMap = (url: string | null, filename: string) => {
-    if (!url) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
+  const saveRecipe = () => {
+    const blob = new Blob([serializeGenerationRecipe(recipe)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${getGenerationRecipeId(recipe)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
-    <div className="min-h-screen bg-[#151619] text-[#8E9299] font-sans p-4 flex flex-col md:flex-row gap-6 overflow-hidden">
+    <div className="min-h-screen bg-[#151619] text-[#8E9299] font-sans p-4 flex flex-col md:flex-row gap-6 overflow-x-clip md:overflow-hidden">
+      <nav
+        aria-label="Editor sections"
+        className="sticky top-0 z-30 flex justify-around rounded-lg bg-[#18191c] p-2 text-sm text-white md:hidden"
+      >
+        <a href="#studio-controls">Edit</a>
+        <a href="#studio-viewports">Inspect</a>
+        <a href="#studio-exports">Export</a>
+      </nav>
       {/* Sidebar Controls */}
-      <aside className="w-full md:w-[380px] flex-shrink-0 flex flex-col h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar">
+      <aside
+        id="studio-controls"
+        className="studio-anchor order-2 md:order-none w-full md:w-[350px] flex-shrink-0 flex flex-col md:h-[calc(100dvh-2rem)] md:overflow-y-auto custom-scrollbar"
+      >
         {/* Header */}
         <div className="neu-flat p-6 rounded-2xl flex items-center gap-4 m-4 mb-2">
           <div className="w-12 h-12 rounded-full neu-convex flex items-center justify-center text-[#F27D26]">
@@ -135,7 +141,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-wider text-white">GREEBLE</h1>
-            <p className="text-[10px] text-[#8E9299] uppercase tracking-[0.2em]">Generator</p>
+            <p className="text-[10px] text-[#8E9299] uppercase tracking-[0.2em]">Material authoring</p>
           </div>
         </div>
 
@@ -145,6 +151,61 @@ export default function App() {
             <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8E9299] flex items-center gap-2">
               <Settings size={14} /> Parameters
             </h2>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label htmlFor="material-preset" className="text-[10px] uppercase tracking-widest">
+              Material preset
+            </label>
+            <CustomSelect
+              id="material-preset"
+              placeholder="Choose a starting material…"
+              value=""
+              options={[
+                { label: 'Service deck', value: 'tech' },
+                { label: 'Relay board', value: 'electrical' },
+              ]}
+              onChange={(name) =>
+                setRecipe(parseGenerationRecipe(JSON.stringify(name === 'tech' ? serviceDeck : relayBoard)))
+              }
+            />
+            <label htmlFor="renderer-select" className="text-[10px] uppercase tracking-widest">
+              Renderer
+            </label>
+            <CustomSelect
+              id="renderer-select"
+              value={recipe.version}
+              onChange={(version) => setRecipe(convertRecipeVersion(recipe, version))}
+              options={[
+                { label: 'Studio v2', value: 2 },
+                { label: 'Legacy v1', value: 1 },
+              ]}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="studio-action" onClick={() => fileInput.current?.click()}>
+                Load recipe
+              </button>
+              <button type="button" className="studio-action" onClick={saveRecipe}>
+                Save recipe
+              </button>
+            </div>
+            <input
+              ref={fileInput}
+              type="file"
+              aria-label="Load recipe JSON"
+              className="sr-only"
+              tabIndex={-1}
+              accept=".json,application/json"
+              onChange={(e) => {
+                void importRecipe(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            {importError && (
+              <p role="alert" className="text-xs text-[#ffb08c]">
+                {importError}
+              </p>
+            )}
           </div>
 
           {/* Seed */}
@@ -165,6 +226,47 @@ export default function App() {
             <NumberDial id="seed-input" value={params.seed} onChange={(v) => handleParamChange('seed', v)} />
           </div>
 
+          {recipe.version === 2 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-[#ccd0d6]">Variation seeds</summary>
+              <div className="mt-3 grid gap-3">
+                {(['detailSeed', 'finishSeed'] as const).map((key) => {
+                  const label = key === 'detailSeed' ? 'Component detail' : 'Surface finish';
+                  return (
+                    <div key={key} className="grid grid-cols-[1fr_auto] items-center gap-2">
+                      <label htmlFor={key}>{label}</label>
+                      <button
+                        type="button"
+                        className="studio-action"
+                        onClick={() => handleParamChange(key, crypto.getRandomValues(new Uint32Array(1))[0])}
+                      >
+                        Vary {key === 'detailSeed' ? 'components' : 'finish'}
+                      </button>
+                      <input
+                        id={key}
+                        type="number"
+                        step={1}
+                        placeholder={String(params.seed)}
+                        value={params[key] ?? ''}
+                        className="min-w-0 rounded bg-[#101114] p-2 text-white"
+                        onChange={(event) =>
+                          handleParamChange(key, event.target.value === '' ? undefined : event.target.valueAsNumber)
+                        }
+                      />
+                      <button
+                        type="button"
+                        disabled={params[key] === undefined}
+                        className="studio-action"
+                        onClick={() => handleParamChange(key, undefined)}
+                      >
+                        Use main seed
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
           {/* Style */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
@@ -183,11 +285,30 @@ export default function App() {
             />
           </div>
 
+          {recipe.version === 2 && (
+            <PanelEditor
+              recipe={recipe}
+              previewUrl={
+                preview &&
+                serializeGenerationRecipe(preview.recipe) ===
+                  serializeGenerationRecipe({
+                    ...recipe,
+                    params: { ...params, resolution: preview.recipe.params.resolution },
+                  })
+                  ? preview.urls.albedo
+                  : undefined
+              }
+              onChange={(panelOverrides) =>
+                setRecipe(createGenerationRecipe({ ...generationParamsFromRecipe(recipe), panelOverrides }, 2))
+              }
+            />
+          )}
+
           {/* Resolution */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
               <label htmlFor="resolution-select" className="text-[10px] uppercase tracking-widest text-[#8E9299]">
-                Resolution
+                Bake resolution
               </label>
             </div>
             <CustomSelect
@@ -195,6 +316,9 @@ export default function App() {
               value={params.resolution}
               onChange={(v) => handleParamChange('resolution', v)}
               options={[
+                ...(![512, 1024, 2048, 4096, 8192].includes(params.resolution)
+                  ? [{ label: `${params.resolution}x${params.resolution}`, value: params.resolution }]
+                  : []),
                 { label: '512x512', value: 512 },
                 { label: '1024x1024', value: 1024 },
                 { label: '2048x2048', value: 2048 },
@@ -234,13 +358,15 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex gap-2 justify-between">
+            <div className="flex flex-wrap gap-2 justify-between">
               {params.palette.map((color, idx) => (
-                <div key={color} className="flex flex-col items-center gap-2 group">
+                // biome-ignore lint/suspicious/noArrayIndexKey: These controls edit fixed palette slots, including duplicate colors.
+                <div key={`palette-slot-${idx}`} className="flex flex-col items-center gap-2 group">
                   <div className="relative w-10 h-10 rounded-lg neu-convex overflow-hidden border border-[rgba(255,255,255,0.05)]">
                     <input
+                      aria-label={`Palette color ${idx + 1}`}
                       type="color"
-                      value={color}
+                      value={color.startsWith('#') ? color : `#${color}`}
                       onChange={(e) => {
                         const newPal = [...params.palette];
                         newPal[idx] = e.target.value;
@@ -259,6 +385,7 @@ export default function App() {
                           handleParamChange('palette', newPal);
                         }
                       }}
+                      aria-label={`Move palette slot ${idx + 1} left`}
                       disabled={idx === 0}
                       className="text-[#8E9299] hover:text-[#F27D26] disabled:opacity-30"
                     >
@@ -273,6 +400,7 @@ export default function App() {
                           handleParamChange('palette', newPal);
                         }
                       }}
+                      aria-label={`Move palette slot ${idx + 1} right`}
                       disabled={idx === params.palette.length - 1}
                       className="text-[#8E9299] hover:text-[#F27D26] disabled:opacity-30"
                     >
@@ -345,80 +473,126 @@ export default function App() {
             />
           </div>
 
-          {/* Generate Button */}
-          {generationError && (
-            <div role="alert" className="rounded-lg border border-[#7a2f1d] bg-[#2a1712] p-3 text-xs text-[#ffb08c]">
-              {generationError}
+          {recipe.version === 2 && (
+            <div className="flex flex-col gap-5">
+              <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em]">Surface finish</h3>
+              <SliderControl
+                id="normal-strength"
+                label="Normal strength"
+                value={params.normalStrength ?? DEFAULT_FINISH.normalStrength}
+                min={0}
+                max={4}
+                step={0.05}
+                onChange={(v) => handleParamChange('normalStrength', v)}
+              />
+              <SliderControl
+                id="ao-strength"
+                label="Occlusion strength"
+                value={params.aoStrength ?? DEFAULT_FINISH.aoStrength}
+                min={0}
+                max={2}
+                step={0.05}
+                onChange={(v) => handleParamChange('aoStrength', v)}
+              />
+              <SliderControl
+                id="wear"
+                label="Edge wear"
+                value={params.wear ?? DEFAULT_FINISH.wear}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={(v) => handleParamChange('wear', v)}
+              />
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => scheduleGeneration(params)}
-            disabled={isGenerating}
-            className={`w-full mt-4 py-4 rounded-xl neu-convex font-bold tracking-[0.2em] uppercase text-xs transition-all flex items-center justify-center gap-3 border border-[rgba(255,255,255,0.05)]
-              ${isGenerating ? 'text-[#8E9299] opacity-50 cursor-not-allowed' : 'text-[#F27D26] hover:brightness-110 active:neu-pressed'}`}
-          >
-            {isGenerating ? <RefreshCcw size={16} className="animate-spin" /> : <RefreshCcw size={16} />}
-            {isGenerating ? 'Processing...' : 'Generate Maps'}
-          </button>
         </div>
-
-        {/* Export */}
-        <div className="neu-flat p-6 rounded-2xl flex flex-col gap-4 m-4 mt-2 mb-8">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8E9299] flex items-center gap-2">
-            <Download size={14} /> Export
-          </h2>
-          <div className="grid grid-cols-3 gap-3">
-            <ExportButton
-              label="ALB"
-              onClick={() => downloadMap(maps.albedo, 'greeble_albedo.png')}
-              disabled={!maps.albedo}
-            />
-            <ExportButton
-              label="NRM"
-              onClick={() => downloadMap(maps.normal, 'greeble_normal.png')}
-              disabled={!maps.normal}
-            />
-            <ExportButton
-              label="HGT"
-              onClick={() => downloadMap(maps.height, 'greeble_height.png')}
-              disabled={!maps.height}
-            />
-          </div>
+        <div id="studio-exports" className="studio-anchor">
+          <MaterialExports material={material} intendedRecipe={recipe} />
         </div>
       </aside>
 
       {/* Main Viewport Area */}
-      <main className="flex-1 flex flex-col gap-6 h-[calc(100vh-2rem)]">
-        {/* 2D Viewport */}
-        <div className="flex-1 neu-flat rounded-2xl p-4 flex flex-col relative min-h-[300px]">
-          {/* Tabs */}
-          <div className="absolute top-6 left-6 z-10 flex gap-3">
-            <TabButton active={activeTab2D === 'albedo'} onClick={() => setActiveTab2D('albedo')}>
-              Albedo
-            </TabButton>
-            <TabButton active={activeTab2D === 'normal'} onClick={() => setActiveTab2D('normal')}>
-              Normal
-            </TabButton>
-            <TabButton active={activeTab2D === 'height'} onClick={() => setActiveTab2D('height')}>
-              Height
-            </TabButton>
+      <main
+        id="studio-viewports"
+        className="studio-anchor min-w-0 flex-1 flex flex-col gap-3 md:h-[calc(100dvh-2rem)] md:overflow-y-auto"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="studio-action"
+              disabled={!history.past.length}
+              onClick={() => dispatch({ type: 'undo' })}
+              title="Undo (Ctrl/⌘ Z)"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              className="studio-action"
+              disabled={!history.future.length}
+              onClick={() => dispatch({ type: 'redo' })}
+              title="Redo (Ctrl/⌘ Shift Z)"
+            >
+              Redo
+            </button>
+            <a href="#studio-exports" className="studio-action">
+              Export maps
+            </a>
           </div>
-          <Viewport2D albedoMap={maps.albedo} normalMap={maps.normal} heightMap={maps.height} activeTab={activeTab2D} />
+          {error && (
+            <p role="alert" className="text-xs text-[#ffb08c]">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => render(recipe, 'bake')}
+              className="studio-action text-[#F27D26] font-bold"
+            >
+              Bake {params.resolution} × {params.resolution}
+            </button>
+            {progress && (
+              <>
+                <div className="flex justify-between gap-2 items-center text-xs">
+                  <span role="status">{progress.stage}</span>
+                  <button className="underline text-white" type="button" onClick={cancel}>
+                    Cancel render
+                  </button>
+                </div>
+                <progress
+                  aria-label="Material render progress"
+                  max={1}
+                  value={progress.fraction}
+                  className="w-full h-1 accent-[#F27D26]"
+                />
+              </>
+            )}
+            <p className="text-[11px]">
+              Edits preview at {Math.min(params.resolution, 512)} px. Bake for full-resolution export.
+            </p>
+          </div>
         </div>
+        <MapInspector material={material} preview={preview} />
 
         {/* 3D Viewport */}
-        <div className="flex-1 neu-flat rounded-2xl p-4 flex flex-col relative min-h-[300px]">
+        <div className="flex-1 neu-flat rounded-2xl p-4 flex flex-col relative min-h-[300px] overflow-hidden">
           <div className="absolute bottom-6 right-6 z-10 pointer-events-none text-[10px] font-mono text-[#8E9299] uppercase tracking-[0.15em]">
             Displacement Preview
           </div>
-          <Viewport3D
-            albedoMap={maps.albedo}
-            normalMap={maps.normal}
-            heightMap={maps.height}
-            roughnessMap={maps.roughness}
-            metalnessMap={maps.metalness}
-          />
+          <Suspense fallback={<p role="status">Loading 3D preview…</p>}>
+            {preview ? (
+              <Viewport3D
+                albedoMap={preview.urls.albedo}
+                normalMap={preview.recipe.version === 2 ? preview.urls.normal : null}
+                heightMap={preview.urls.height}
+                ormMap={preview.urls.orm}
+              />
+            ) : (
+              <p className="m-auto text-xs">Preparing material preview…</p>
+            )}
+          </Suspense>
         </div>
       </main>
     </div>
