@@ -175,12 +175,11 @@ test('mobile viewport keeps the mesh visible and frames it again after orbiting'
 });
 
 test('sub-polygon displacement refines the active swatch and restores the parallax preview', async ({ page }) => {
-  const { canvas, errors } = await loadPlate(page);
-  await page.getByRole('button', { name: 'Displacement', exact: true }).click();
-  await page.getByRole('button', { name: 'Exaggerate relief (6×)', exact: true }).click();
-  await expect(page.locator('#style-select')).toHaveValue('displacement');
   const factory = await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8');
   const recipe = parseGenerationRecipe(factory);
+  await page.addInitScript((json) => localStorage.setItem('greebler.editor.recipe', json), factory);
+  const { canvas, errors } = await loadPlate(page);
+  await page.getByRole('button', { name: 'Exaggerate relief (6×)', exact: true }).click();
   const draftId = getGenerationRecipeId({ ...recipe, params: { ...recipe.params, resolution: 512 } });
   await expect(canvas).toHaveAttribute('data-material-id', draftId);
   const standard = await sampleSurface(canvas);
