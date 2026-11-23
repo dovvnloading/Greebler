@@ -1,8 +1,35 @@
 export const GENERATION_RECIPE_VERSION = 2 as const;
 export type RecipeVersion = 1 | typeof GENERATION_RECIPE_VERSION;
 export type GenerationStyle = 'tech' | 'electrical';
-export const panelComponents = ['plain', 'radiator', 'terminal', 'controller'] as const;
+export const hardwarePatterns = [
+  'iris',
+  'coupling',
+  'truss',
+  'exchanger',
+  'harness',
+  'filter',
+  'waveguide',
+  'cassette',
+  'sensor',
+] as const;
+export type HardwarePattern = (typeof hardwarePatterns)[number];
+export const panelComponents = ['plain', 'radiator', 'terminal', 'controller', ...hardwarePatterns] as const;
 export type PanelComponent = (typeof panelComponents)[number];
+export const componentLabels: Record<PanelComponent, string> = {
+  plain: 'Plain cover',
+  radiator: 'Louvered radiator',
+  terminal: 'Power terminals',
+  controller: 'Controller board',
+  iris: 'Iris shutter',
+  coupling: 'Linear actuator',
+  truss: 'Gusset truss',
+  exchanger: 'Serpentine exchanger',
+  harness: 'Cable harness',
+  filter: 'Honeycomb intake',
+  waveguide: 'RF waveguide',
+  cassette: 'Cartridge rack',
+  sensor: 'Optical array',
+};
 export type PanelOverrides = Readonly<Record<string, PanelComponent>>;
 
 export const DEFAULT_FINISH = { normalStrength: 1, aoStrength: 1, wear: 0.35 } as const;
@@ -19,6 +46,7 @@ export interface GenerationParams {
   palette: string[];
   detailSeed?: number;
   finishSeed?: number;
+  panelPattern?: HardwarePattern | 'mixed';
   panelOverrides?: PanelOverrides;
   reliefProfile?: 'formed';
   normalStrength?: number;
@@ -65,6 +93,9 @@ export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
     legacy ||
     ((p.detailSeed === undefined || Number.isSafeInteger(p.detailSeed)) &&
       (p.finishSeed === undefined || Number.isSafeInteger(p.finishSeed)) &&
+      (p.panelPattern === undefined ||
+        p.panelPattern === 'mixed' ||
+        hardwarePatterns.some((id) => id === p.panelPattern)) &&
       validPanelOverrides(p.panelOverrides) &&
       (p.reliefProfile === undefined || p.reliefProfile === 'formed') &&
       (p.normalStrength === undefined || inRange(p.normalStrength, 0, 4)) &&
@@ -99,6 +130,7 @@ export function cloneGenerationRecipe(recipe: GenerationRecipe): GenerationRecip
       ...params,
       ...(p.detailSeed === undefined ? {} : { detailSeed: p.detailSeed }),
       ...(p.finishSeed === undefined ? {} : { finishSeed: p.finishSeed }),
+      ...(p.panelPattern && { panelPattern: p.panelPattern }),
       ...(overrides.length ? { panelOverrides: Object.fromEntries(overrides) } : {}),
       ...(p.reliefProfile ? { reliefProfile: p.reliefProfile } : {}),
       normalStrength: p.normalStrength ?? DEFAULT_FINISH.normalStrength,

@@ -3,14 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { drawThumbnail } from '../preview/drawThumbnail';
 import { planStudioPanels } from '../engine/surfaceAssembly';
 import { TILE } from '../engine/surfacePrimitives';
-import { type GenerationRecipe, type PanelComponent, type PanelOverrides, panelComponents } from '../recipes';
-
-const labels: Record<PanelComponent, string> = {
-  plain: 'Plain cover',
-  radiator: 'Louvered radiator',
-  terminal: 'Power terminals',
-  controller: 'Controller board',
-};
+import { type GenerationRecipe, componentLabels, type PanelOverrides, panelComponents } from '../recipes';
 
 interface PanelEditorProps {
   recipe: GenerationRecipe;
@@ -85,7 +78,7 @@ export function PanelEditor({ recipe, albedo, onChange }: PanelEditorProps) {
               {slots.map((slot) => (
                 <option key={slot.id} value={slot.id}>
                   {slot.id}
-                  {overrides[slot.id] ? ` · ${labels[overrides[slot.id]]}` : ''}
+                  {overrides[slot.id] ? ` · ${componentLabels[overrides[slot.id]]}` : ''}
                 </option>
               ))}
             </select>
@@ -100,7 +93,7 @@ export function PanelEditor({ recipe, albedo, onChange }: PanelEditorProps) {
               <option value="">Procedural default</option>
               {panelComponents.map((key) => (
                 <option key={key} value={key}>
-                  {labels[key]}
+                  {componentLabels[key]}
                 </option>
               ))}
             </select>

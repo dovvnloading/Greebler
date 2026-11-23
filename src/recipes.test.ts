@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import relayBoard from '../examples/relay-board.json';
+import serviceDeck from '../examples/service-deck.json';
 import {
   cloneGenerationRecipe,
   convertRecipeVersion,
@@ -8,6 +10,7 @@ import {
   type GenerationParams,
   generationParamsFromRecipe,
   getGenerationRecipeId,
+  hardwarePatterns,
   normalizeGenerationRecipe,
   parseGenerationRecipe,
   serializeGenerationRecipe,
@@ -145,4 +148,41 @@ it('records formed relief as an explicit recipe input while preserving the origi
   expect(
     createGenerationRecipe({ ...createParams(), reliefProfile: 'formed' }, 1).params.reliefProfile,
   ).toBeUndefined();
+});
+
+it.each([
+  ['service deck', serviceDeck, 'g2-a30bfe08'],
+  ['relay board', relayBoard, 'g2-0b5b5251'],
+] as const)('retains the shipped %s recipe identity', (_name, example, id) => {
+  const recipe = parseGenerationRecipe(JSON.stringify(example));
+  expect(getGenerationRecipeId(recipe)).toBe(id);
+  expect(serializeGenerationRecipe(recipe)).not.toContain('panelPattern');
+});
+
+it('round-trips every hardware family and local fitting, including mixed hardware', () => {
+  const params = createParams();
+  const ids = new Set<string>();
+  for (const panelPattern of [...hardwarePatterns, 'mixed'] as const) {
+    const overrides = { A01: panelPattern === 'mixed' ? 'truss' : panelPattern } as const;
+    const recipe = createGenerationRecipe({ ...params, panelPattern, panelOverrides: overrides });
+    const restored = parseGenerationRecipe(serializeGenerationRecipe(recipe));
+    expect(restored.params.panelPattern).toBe(panelPattern);
+    expect(restored.params.panelOverrides).toEqual(overrides);
+    expect(restored).toEqual(recipe);
+    expect(convertRecipeVersion(restored, 1)).toEqual(createGenerationRecipe(params, 1));
+    ids.add(getGenerationRecipeId(createGenerationRecipe({ ...params, panelPattern })));
+  }
+  ids.add(getGenerationRecipeId(createGenerationRecipe(params)));
+  expect(ids.size).toBe(hardwarePatterns.length + 2);
+});
+
+it.each([
+  { panelPattern: 'harnesses' },
+  { panelPattern: 'plain' },
+  { panelPattern: null },
+  { panelOverrides: { A01: 'mixed' } },
+])('rejects unsupported global or fitted hardware choices', (change) => {
+  expect(() =>
+    parseGenerationRecipe(JSON.stringify({ version: 2, params: { ...createParams(), ...change } })),
+  ).toThrow();
 });

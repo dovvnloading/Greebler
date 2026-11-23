@@ -20,7 +20,7 @@ async function exportedFiles(page: Page, recipeId: string) {
   return unzipSync(await readFile(path));
 }
 
-test('picks both copies of a wrapped panel, exports only its local change, and restores the procedural material', async ({
+test('fits both copies of a wrapped factory iris panel, exports its local actuator and restores the preset', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -31,17 +31,17 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
       },
     });
   });
-  const preset = JSON.parse(await readFile(new URL('../../examples/service-deck.json', import.meta.url), 'utf8'));
-  const size = 256;
+  const preset = JSON.parse(await readFile(new URL('../../examples/iris.json', import.meta.url), 'utf8'));
+  const size = 512;
   const recipe = parseGenerationRecipe(JSON.stringify({ ...preset, params: { ...preset.params, resolution: size } }));
   const slot = planStudioPanels(recipe.params)
     .slots.filter((entry) => entry.regions.length > 1)
     .sort((a, b) => b.w * b.h - a.w * a.h)[0];
   expect(slot).toBeDefined();
   await page.goto('/');
-  await page
-    .getByLabel('Load recipe JSON', { exact: true })
-    .setInputFiles({ name: 'test.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(recipe)) });
+  await page.getByRole('button', { name: 'Iris shutter', exact: true }).click();
+  await expect(page.getByLabel('Panel pattern', { exact: true })).toHaveValue('iris');
+  await page.getByLabel('Bake resolution').selectOption(String(size));
   const before = await exportedFiles(page, getGenerationRecipeId(recipe));
   await page.getByText('Panel components', { exact: true }).click();
   const fragments = page
@@ -51,9 +51,9 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
   await fragments.last().click();
   await expect(page.getByLabel('Panel ID')).toHaveValue(slot.id);
   await expect(fragments.first()).toHaveAttribute('aria-pressed', 'true');
-  await page.getByLabel('Fitted component').selectOption('controller');
+  await page.getByLabel('Fitted component').selectOption('coupling');
   const changed = parseGenerationRecipe(
-    JSON.stringify({ ...recipe, params: { ...recipe.params, panelOverrides: { [slot.id]: 'controller' } } }),
+    JSON.stringify({ ...recipe, params: { ...recipe.params, panelOverrides: { [slot.id]: 'coupling' } } }),
   );
   const after = await exportedFiles(page, getGenerationRecipeId(changed));
   expect(JSON.parse(new TextDecoder().decode(after['recipe.json']))).toEqual(changed);
@@ -64,8 +64,8 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
     const b = readStudioPixels(after[`maps/${map}.png`], 3);
     let inside = 0,
       outside = 0;
-    // AO samples neighbors up to three pixels away at this resolution.
-    const halo = ((map === 'orm' ? 4 : 1) * TILE) / size;
+    // AO samples neighbors up to six pixels away at this resolution.
+    const halo = ((map === 'orm' ? 7 : 1) * TILE) / size;
     for (let y = 0; y < size; y++)
       for (let x = 0; x < size; x++) {
         const at = (y * size + x) * 3;
@@ -88,7 +88,7 @@ test('picks both copies of a wrapped panel, exports only its local change, and r
   await page.keyboard.press('Escape');
   await expect(page.getByLabel('Fitted component')).toHaveValue('');
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
-  await expect(page.getByLabel('Fitted component')).toHaveValue('controller');
+  await expect(page.getByLabel('Fitted component')).toHaveValue('coupling');
   await page.getByRole('button', { name: 'Reset all panels', exact: true }).click();
   const reset = await exportedFiles(page, getGenerationRecipeId(recipe));
   for (const name of Object.keys(before).filter((name) => name.startsWith('maps/'))) {

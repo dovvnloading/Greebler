@@ -6,13 +6,33 @@ Greebler is a procedural hard-surface material editor. Build repeating service p
 
 ## Author a material
 
-1. Choose **Service deck** or **Relay board** from the material library, open a recipe file, or start with the current material. **Save to library** keeps a named variant in this browser. **Save recipe** downloads portable JSON. [Service deck recipe](examples/service-deck.json) · [Relay board recipe](examples/relay-board.json)
-2. In **Properties**, set the seed, panel density, gap size and surface finish. Enter an exact numeric value or drag its slider. **Variation seeds** change fitted components and finish independently. **Panel components** lets you select a bay on the tile and fit a cover, radiator, terminal block or controller board. The palette accepts hex colors and supports reordering. Undo and redo are in the toolbar.
+1. Choose a factory preset in **Material library**, or open a recipe file. Each hardware preset has a matching 2048 px recipe in [examples](examples/). **Save to library** keeps a named variant in this browser. **Save recipe** downloads portable JSON.
+2. In **Properties**, set the seed, panel density, gap size and surface finish. Enter an exact numeric value or drag its slider. **Variation seeds** change fitted components and finish independently. **Panel components** lets you select a bay on the tile and choose its fitted hardware. The palette accepts hex colors and supports reordering. Undo and redo are in the toolbar.
 3. Orbit the specimen, sweep **Light angle**, or choose **Clay** and **Raking light** to inspect its shape. Select an axis on the orientation control to align the camera. **Frame material** restores the starting view. [Matched viewport renders](docs/viewport-comparison.webp)
 4. Click a channel in **Texture set** to open the map. **Split** shows the map beside the shaded material. **2×2** reveals tile boundaries, and **1:1** lets you pan across the completed bake at native resolution. Switching back to 3D restores the camera and shading settings.
 5. Choose a resolution and press **Bake**. Edits preview at up to 512 px. Bakes above 2048 px retain their full-size source maps and use a filtered 2048 px GPU preview. **Export** identifies the completed bake, offers individual PNGs and packages the chosen engine target. Canceling a bake keeps the last completed output.
 
 Drag a divider to resize either dock. With a divider focused, the arrow keys adjust its width and Home resets it. Dock widths and visibility survive reload. On narrow screens, the Library and Properties buttons open sheets. **Shift+Space** toggles focus mode, **Ctrl/⌘ K** finds materials, and **Ctrl/⌘ Enter** bakes. The keyboard button in the status bar lists the other commands.
+
+## Hardware patterns
+
+![Nine hardware presets, showing iris shutters, linear actuators, gusset trusses, heat exchangers, cable harnesses, honeycomb intakes, RF waveguides, cartridge racks and optical arrays](docs/hardware-patterns.webp)
+
+In Studio v2, choose **Properties → Generator → Panel pattern** to fit a pattern across a material. **Mixed hardware** chooses a pattern independently for each populated bay. **Medium details** controls how many bays receive hardware. Change **Variation seeds → Component detail** to vary the fittings within the same panel layout.
+
+To place one part by hand, open **Geometry → Panel components**, pick a bay and choose a **Fitted component**. Select **Procedural default** to return that bay to the material’s pattern. These settings travel with the recipe through the editor, command-line bake and material exports.
+
+| Pattern recipe | Surface detail |
+| --- | --- |
+| [Iris shutter](examples/iris.json) | Overlapping shutter leaves surround a variable aperture inside a slotted retaining ring. |
+| [Linear actuator](examples/coupling.json) | A polished ram extends from a painted cylinder into a pinned clevis. |
+| [Gusset truss](examples/truss.json) | Alternating diagonal braces meet riveted gussets above a recessed bed. |
+| [Serpentine exchanger](examples/exchanger.json) | A continuous tube folds back across cooling fins and returns to its inlet header. |
+| [Cable harness](examples/harness.json) | Colored leads pass under a retaining saddle and fan out into two keyed plugs. |
+| [Honeycomb intake](examples/filter.json) | A chamfered frame and bridge straps protect a field of hexagonal perforations. |
+| [RF waveguide](examples/waveguide.json) | Rectangular metal ducts turn through mitered elbows between bolted flanges. |
+| [Cartridge rack](examples/cassette.json) | Removable sleds carry captive handles over recessed finger wells. |
+| [Optical array](examples/sensor.json) | Coated primary and auxiliary optics sit in indexed focus rings on a shared mount. |
 
 ## Material data and import
 

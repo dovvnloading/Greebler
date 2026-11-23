@@ -1,4 +1,8 @@
-import type { GenerationParams, PanelComponent } from '../recipes';
+import { type GenerationParams, hardwarePatterns, type HardwarePattern, type PanelComponent } from '../recipes';
+import { cassette, sensor, waveguide } from './instrumentPatterns';
+import { coupling, iris, truss } from './mechanicalPatterns';
+import { board, bolt, copper, enamel, gunmetal, insulator, pipe, rubber, steel } from './patternHardware';
+import { exchanger, filter, harness } from './servicePatterns';
 import { hash, type PanelSlot, planStudioPanels, sample } from './surfaceAssembly';
 import { type Finish, type StudioLayout, SurfacePen, TILE } from './surfacePrimitives';
 
@@ -19,14 +23,6 @@ function mixColor(a: string, b: string, proportion: number) {
   return color;
 }
 
-const steel: Finish = { color: '#8b9397', roughness: 96, metalness: 247 };
-const gunmetal: Finish = { color: '#4b5358', roughness: 128, metalness: 233 };
-const copper: Finish = { color: '#bc7954', roughness: 85, metalness: 249 };
-const rubber: Finish = { color: '#1e2325', roughness: 186, metalness: 0 };
-const insulator: Finish = { color: '#64787a', roughness: 104, metalness: 0 };
-const board: Finish = { color: '#2f4b48', roughness: 132, metalness: 0 };
-const enamel: Finish = { color: '#a65838', roughness: 109, metalness: 0 };
-
 function coating(palette: readonly string[], tone: number, roughness: number): Finish {
   const at = Math.max(0, Math.min(1, tone)) * (palette.length - 1);
   const lower = Math.floor(at);
@@ -36,12 +32,6 @@ function coating(palette: readonly string[], tone: number, roughness: number): F
     metalness: 0,
     paintedMetal: true,
   };
-}
-
-function bolt(pen: SurfacePen, x: number, y: number, r: number, z: number, angle: number) {
-  pen.disc(x, y, r, z - 12, gunmetal);
-  pen.ring(x, y, r * 0.77, 6, z + 5, steel, angle);
-  pen.ring(x, y, r * 0.34, 6, z - 7, gunmetal, angle);
 }
 
 /** Tooling channel and retaining bar for a removable panel latch. */
@@ -343,6 +333,32 @@ function rimWear(pen: SurfacePen, w: number, h: number, seed: number, z: number,
   }
 }
 
+type PatternDrawer = (
+  pen: SurfacePen,
+  w: number,
+  h: number,
+  z: number,
+  fine: number,
+  seed: number,
+  face: Finish,
+) => void;
+
+const hardware: Record<HardwarePattern, PatternDrawer> = {
+  iris,
+  coupling,
+  truss,
+  exchanger,
+  harness,
+  filter,
+  waveguide,
+  cassette,
+  sensor,
+};
+
+function panelPattern(pattern: GenerationParams['panelPattern'], detail: number) {
+  return pattern === 'mixed' ? hardwarePatterns[Math.floor(sample(detail, 51) * hardwarePatterns.length)] : pattern;
+}
+
 function drawPanel(
   pen: SurfacePen,
   w: number,
@@ -381,19 +397,22 @@ function drawPanel(
     }
   }
 
-  const mx = override ? Math.min(w * 0.12, 19) : 12 + Math.min(11, w * 0.04);
+  const hasDetail = sample(detail, 9) < params.mediumDensity;
+  const component = override ?? (hasDetail ? panelPattern(params.panelPattern, detail) : undefined);
+  const mx = component ? Math.min(w * 0.12, 19) : 12 + Math.min(11, w * 0.04);
   const my = Math.min(20, h * 0.17);
   const iw = w - mx * 2;
   const ih = h - my * 2;
-  if (override) {
+  if (component) {
     // Fit the chosen assembly within the existing hatch and leave its mounting rim intact.
     const fitted = pen.frame(mx, my);
-    if (override === 'radiator') radiator(fitted, iw, ih, z, fine);
-    if (override === 'terminal') terminalBlock(fitted, iw, ih, z, fine);
-    if (override === 'controller') circuit(fitted, iw, ih, z, fine);
+    if (component === 'radiator') radiator(fitted, iw, ih, z, fine);
+    else if (component === 'terminal') terminalBlock(fitted, iw, ih, z, fine);
+    else if (component === 'controller') circuit(fitted, iw, ih, z, fine);
+    else if (component !== 'plain') hardware[component](fitted, iw, ih, z, fine, detail, face);
   } else if (iw < 40 || ih < 13) {
     return;
-  } else if (sample(detail, 9) < params.mediumDensity) {
+  } else if (hasDetail) {
     const type = sample(detail, 10);
     // Leave an uninterrupted area on larger faces. The feature and the latch belong to the same hatch.
     const fw = Math.min(iw, iw * (0.52 + sample(detail, 11) * 0.4) + 8);
@@ -444,26 +463,16 @@ function fitBay(pen: SurfacePen, slot: PanelSlot, params: GenerationParams) {
     const margin = Math.min(13, depth * 0.12);
     frame.chamfer(margin, margin, span - margin * 2, depth - margin * 2, 5, 45, gunmetal);
     const inner = frame.frame(margin * 2, margin * 2);
-    if (params.style === 'electrical') circuit(inner, span - margin * 4, depth - margin * 4, 65, params.smallDensity);
-    else radiator(inner, span - margin * 4, depth - margin * 4, 66, params.smallDensity);
+    const innerW = span - margin * 4;
+    const innerH = depth - margin * 4;
+    const detail = params.detailSeed === undefined ? seed : hash(seed, params.detailSeed);
+    const pattern = panelPattern(params.panelPattern, detail);
+    if (pattern)
+      hardware[pattern](inner, innerW, innerH, 94, params.smallDensity, detail, coating(params.palette, 0.42, 115));
+    else if (params.style === 'electrical') circuit(inner, innerW, innerH, 65, params.smallDensity);
+    else radiator(inner, innerW, innerH, 66, params.smallDensity);
   } else {
     backplane(frame, span, Math.min(w, h), params, seed);
-  }
-}
-
-function pipe(pen: SurfacePen, points: number[], width: number, z: number, finish: Finish) {
-  if (pen.formed) {
-    // Wide supply hoses sit deeper in their channels; the crown clears its retaining
-    // strap. Thin capillaries keep a proportionally smaller section.
-    const rise = Math.min(86, Math.max(16, width * 8));
-    pen.path(points, z + 34 - rise, finish, width, { kind: 'tube', rise });
-    return;
-  }
-  // The archived profile sampled the cross-section at four heights.
-  pen.path(points, z, finish, width);
-  for (const radius of [0.87, 0.66, 0.38]) {
-    const rise = Math.round(Math.sqrt(1 - radius * radius) * 34);
-    pen.path(points, z + rise, undefined, width * radius);
   }
 }
 
