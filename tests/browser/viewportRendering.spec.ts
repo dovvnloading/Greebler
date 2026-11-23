@@ -1,4 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+
+import { getGenerationRecipeId, parseGenerationRecipe } from '../../src/recipes';
 
 // Retain the last rendered WebGL frame so assertions can sample an idle demand-rendered canvas.
 test.beforeEach(async ({ page }) => {
@@ -169,4 +172,46 @@ test('mobile viewport keeps the mesh visible and frames it again after orbiting'
   await page.getByRole('button', { name: '2D view', exact: true }).click();
   await expect(nativeScale).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => nativePixels.evaluate((node) => node.scrollLeft)).toBe(24);
+});
+
+test('sub-polygon displacement refines the active swatch and restores the parallax preview', async ({ page }) => {
+  const { canvas, errors } = await loadPlate(page);
+  await page.getByRole('button', { name: 'Displacement', exact: true }).click();
+  await page.getByRole('button', { name: 'Exaggerate relief (6×)', exact: true }).click();
+  await expect(page.locator('#style-select')).toHaveValue('displacement');
+  const factory = await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8');
+  const recipe = parseGenerationRecipe(factory);
+  const draftId = getGenerationRecipeId({ ...recipe, params: { ...recipe.params, resolution: 512 } });
+  await expect(canvas).toHaveAttribute('data-material-id', draftId);
+  const standard = await sampleSurface(canvas);
+  const baseCount = await canvas.getAttribute('data-surface-triangles');
+  const button = page.getByRole('button', { name: 'Sub-polygon displacement', exact: true });
+  await button.click();
+  await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
+  await expect(page.getByRole('status').filter({ hasText: /surface triangles/ })).toBeVisible();
+  await expect(canvas).not.toHaveAttribute('data-surface-triangles', baseCount ?? '');
+  const refined = await sampleSurface(canvas);
+  expect(differingPixels(standard, refined, 2)).toBeGreaterThan(0.01);
+  const originalSize = await canvas.evaluate((node: HTMLCanvasElement) => [node.width, node.height]);
+  const saving = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save displacement render' }).click();
+  const saved = await saving;
+  expect(saved.suggestedFilename()).toBe(`greebler-${draftId}-plate.png`);
+  const file = await saved.path();
+  if (!file) throw new Error('Missing displacement render.');
+  const png = await readFile(file);
+  expect(png.toString('ascii', 1, 4)).toBe('PNG');
+  expect(Math.max(png.readUInt32BE(16), png.readUInt32BE(20))).toBe(2048);
+  expect(png.length).toBeGreaterThan(32_000);
+  expect(await canvas.evaluate((node: HTMLCanvasElement) => [node.width, node.height])).toEqual(originalSize);
+  expect(differingPixels(refined, await sampleSurface(canvas))).toBeLessThan(0.03);
+  await page.getByRole('button', { name: 'Sphere', exact: true }).click();
+  await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Plate', exact: true }).click();
+  await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
+  await button.click();
+  await expect(canvas).toHaveAttribute('data-displacement-mode', 'preview');
+  await expect(canvas).toHaveAttribute('data-surface-triangles', baseCount ?? '');
+  expect(await canvas.getAttribute('data-material-id')).toBe(draftId);
+  expect(errors).toEqual([]);
 });

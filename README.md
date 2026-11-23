@@ -22,6 +22,16 @@ The left image shows the repeating height tile. The raking light on the right sh
 
 ![Displacement height tile beside a shaded render of its relief](docs/displacement.webp)
 
+## Sub-polygon rendering
+
+Choose **Displacement**, bake at **2048 px**, and turn on **Sub-polygon** in the 3D viewport. Orbit to a low angle and try **Raking light** to see the raised edges and their cast shadows. The triangle count appears when the mesh is ready. **Save render** downloads a PNG of the current camera, lighting and shading at 2048 px on the long edge.
+
+The default preview uses a regular displaced mesh and per-pixel parallax. Sub-polygon mode builds an adaptive mesh in a background worker. It measures how far a triangle would miss the height field and the area affected, then subdivides the regions that benefit most. The camera and shadow passes use the same refined vertices. All four preview shapes support the mode, and the viewport reuses the result while you orbit or relight it. The mesh uses the displayed height field, up to 2048 px. Material packages retain the selected bake resolution.
+
+![Shaded displacement geometry beside its adaptive triangle edges on the same tower and service recesses](docs/adaptive-displacement.webp)
+
+On the 2048 px **Displacement** plane (seed 3894), the adaptive mesh used 479,729 triangles. A regular grid with 480,200 triangles had 2.64% RMS height error across the source texel centers. The adaptive mesh reduced that to 1.34%, measured as a percentage of the full height range. A uniform grid with one cell per source texel would use 8,388,608 triangles.
+
 ## Hardware patterns
 
 ![Nine hardware presets, showing iris shutters, linear actuators, gusset trusses, heat exchangers, cable harnesses, honeycomb intakes, RF waveguides, cartridge racks and optical arrays](docs/hardware-patterns.webp)
@@ -56,7 +66,7 @@ To place one part by hand, open **Geometry → Panel components**, pick a bay an
 
 New Studio v2 recipes use the **Formed edges and curved tubing** height profile. Edges have a physical roundover, hoses have an elliptical cross-section and louver blades have a folded lip. Their tangent-space normals come from the same 16-bit height field as displacement. The coating and machined metal carry different microrelief. Loading an existing recipe retains its recorded output and ID. Choosing a different height profile creates a new recipe ID.
 
-At unit normal strength the full displacement range corresponds to 9.765625 mm for a one-meter tile. The viewport displaces the mesh at its sampling resolution, then follows the viewing ray through the remaining height detail. Every PBR channel uses the resulting surface coordinate. Native 16-bit height values are retained at texel centers, and smaller mip levels filter complete height samples. Ambient occlusion estimates local relief at two radii and, for the formed profile, in eight directions.
+At unit normal strength the full displacement range corresponds to 9.765625 mm for a one-meter tile. The standard viewport preview displaces the mesh at its sampling resolution, then follows the viewing ray through the remaining height detail. Every PBR channel uses the resulting surface coordinate. Native 16-bit height values are retained at texel centers, and smaller mip levels filter complete height samples. Ambient occlusion estimates local relief at two radii and, for the formed profile, in eight directions.
 
 ![Exported service-deck and relay-board materials rendered in Blender Cycles, including tiled albedo and corresponding height, normal and ORM](docs/materials.webp)
 
