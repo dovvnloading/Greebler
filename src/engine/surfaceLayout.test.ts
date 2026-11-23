@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import type { GenerationParams } from '../recipes';
+import { type GenerationParams, hardwarePatterns } from '../recipes';
 import { planStudioPanels } from './surfaceAssembly';
 import { createStudioLayout, type StudioLayout } from './surfaceLayout';
 import { SurfacePen, TILE } from './surfacePrimitives';
@@ -103,4 +104,44 @@ it('retains unique, nonoverlapping panel regions across preview scales, variatio
   }
   // The uncovered area belongs to the two continuous supply trunks.
   expect(area).toBe((TILE - trunk) * (TILE - lateral));
+});
+
+// Comparing height geometry excludes changes caused solely by the paint or finish.
+function geometryId(params: GenerationParams) {
+  return createHash('sha256')
+    .update(JSON.stringify(topology(createStudioLayout(params))))
+    .digest('hex');
+}
+
+it.each([undefined, 'formed'] as const)('fits distinct, seed-repeatable hardware with %s relief', (reliefProfile) => {
+  // An otherwise empty tile isolates variation of the fitting from bolts, serials and trunk clamps.
+  const params = { ...recipe, largeDensity: 0, mediumDensity: 0, smallDensity: 0, wear: 0, reliefProfile };
+  const { slots } = planStudioPanels(params);
+  const slot = slots.reduce((largest, next) => (next.w * next.h > largest.w * largest.h ? next : largest));
+  const unique = new Set([geometryId({ ...params, panelOverrides: { [slot.id]: 'plain' } })]);
+  for (const pattern of hardwarePatterns) {
+    const fitted = { ...params, panelOverrides: { [slot.id]: pattern }, detailSeed: 3 };
+    const original = geometryId(fitted);
+    expect(geometryId({ ...fitted, resolution: 8192 }), pattern).toBe(original);
+    expect(
+      [11, 37, 91].some((detailSeed) => geometryId({ ...fitted, detailSeed }) !== original),
+      pattern,
+    ).toBe(true);
+    unique.add(original);
+  }
+  expect(unique.size).toBe(hardwarePatterns.length + 1);
+});
+
+it('uses the selected family tile-wide, mixes families reproducibly and gives local fittings precedence', () => {
+  const params = { ...recipe, largeDensity: 1, mediumDensity: 1, smallDensity: 0.45, complexity: 2 };
+  const { slots } = planStudioPanels(params);
+  const mixed = geometryId({ ...params, panelPattern: 'mixed' });
+  expect(geometryId({ ...params, panelPattern: 'mixed' })).toBe(mixed);
+  for (const panelPattern of hardwarePatterns) {
+    const uniform = geometryId({ ...params, panelPattern });
+    const panelOverrides = Object.fromEntries(slots.map((slot) => [slot.id, panelPattern]));
+    // Every bay is populated. Fitting every bay explicitly reproduces that family on a mixed tile.
+    expect(geometryId({ ...params, panelPattern: 'mixed', panelOverrides }), panelPattern).toBe(uniform);
+    expect(uniform, panelPattern).not.toBe(mixed);
+  }
 });

@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "params": {
+    "style": "electrical",
+    "panelPattern": "harness",
+    "resolution": 2048,
+    "seed": 41580,
+    "largeDensity": 0.8,
+    "mediumDensity": 0.9,
+    "smallDensity": 0.85,
+    "gapSize": 3,
+    "complexity": 6,
+    "palette": ["#20252c", "#444850", "#757b82", "#acafa7", "#dedac9"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0.22,
+    "reliefProfile": "formed"
+  }
+}

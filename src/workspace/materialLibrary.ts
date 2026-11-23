@@ -1,6 +1,21 @@
+import iris from '../../examples/iris.json';
+import coupling from '../../examples/coupling.json';
+import truss from '../../examples/truss.json';
+import exchanger from '../../examples/exchanger.json';
+import harness from '../../examples/harness.json';
+import filter from '../../examples/filter.json';
+import waveguide from '../../examples/waveguide.json';
+import cassette from '../../examples/cassette.json';
+import sensor from '../../examples/sensor.json';
 import serviceDeck from '../../examples/service-deck.json';
 import relayBoard from '../../examples/relay-board.json';
-import { isGenerationRecipe, parseGenerationRecipe, type GenerationRecipe } from '../recipes';
+import {
+  componentLabels,
+  hardwarePatterns,
+  isGenerationRecipe,
+  parseGenerationRecipe,
+  type GenerationRecipe,
+} from '../recipes';
 
 export interface LibraryMaterial {
   id: string;
@@ -8,6 +23,8 @@ export interface LibraryMaterial {
   recipe: GenerationRecipe;
   image?: string;
 }
+
+const hardwareRecipes = { iris, coupling, truss, exchanger, harness, filter, waveguide, cassette, sensor };
 
 export const factoryMaterials: LibraryMaterial[] = [
   {
@@ -22,6 +39,12 @@ export const factoryMaterials: LibraryMaterial[] = [
     recipe: parseGenerationRecipe(JSON.stringify(relayBoard)),
     image: new URL('../assets/materials/relay-board.webp', import.meta.url).href,
   },
+  ...hardwarePatterns.map((pattern) => ({
+    id: pattern,
+    name: componentLabels[pattern],
+    recipe: parseGenerationRecipe(JSON.stringify(hardwareRecipes[pattern])),
+    image: new URL(`../assets/materials/${pattern}.webp`, import.meta.url).href,
+  })),
 ];
 
 const prefix = 'greebler.material-library.v1/';

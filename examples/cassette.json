@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "params": {
+    "style": "tech",
+    "panelPattern": "cassette",
+    "resolution": 2048,
+    "seed": 7961,
+    "largeDensity": 0.85,
+    "mediumDensity": 0.9,
+    "smallDensity": 0.75,
+    "gapSize": 3,
+    "complexity": 6,
+    "palette": ["#252724", "#4f524d", "#999e91", "#c5c3ad", "#e5e2cc"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0.25,
+    "reliefProfile": "formed"
+  }
+}

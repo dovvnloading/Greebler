@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "params": {
+    "style": "electrical",
+    "panelPattern": "sensor",
+    "resolution": 2048,
+    "seed": 1620,
+    "largeDensity": 0.85,
+    "mediumDensity": 0.8,
+    "smallDensity": 0.65,
+    "gapSize": 3,
+    "complexity": 3,
+    "palette": ["#1b222c", "#344453", "#596d80", "#8d9da5", "#cbd2ca"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0.16,
+    "reliefProfile": "formed"
+  }
+}

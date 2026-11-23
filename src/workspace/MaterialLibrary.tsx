@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { componentLabels } from '../recipes';
 import { Dialog } from './Dialog';
 import { factoryMaterials, type LibraryMaterial } from './materialLibrary';
 
@@ -55,8 +56,12 @@ export function MaterialLibrary({
   useEffect(() => {
     if (searchRequest) search.current?.focus();
   }, [searchRequest]);
-  const matches = ({ name, recipe }: LibraryMaterial) =>
-    `${name} ${recipe.params.style}`.toLowerCase().includes(filter.trim().toLowerCase());
+  const query = filter.trim().toLowerCase();
+  const matches = ({ name, recipe }: LibraryMaterial) => {
+    const pattern = recipe.params.panelPattern;
+    const hardware = pattern === 'mixed' ? 'Mixed hardware' : pattern ? `${pattern} ${componentLabels[pattern]}` : '';
+    return `${name} ${recipe.params.style} ${hardware}`.toLowerCase().includes(query);
+  };
   const presets = factoryMaterials.filter(matches);
   const collection = saved.filter(matches);
   return (
@@ -106,7 +111,7 @@ export function MaterialLibrary({
                 aria-pressed={activeId === item.id}
                 onClick={() => onSelect(item)}
               >
-                <img src={item.image} alt="" width={480} height={248} />
+                <img src={item.image} alt="" width={480} height={248} loading="lazy" />
                 <span className="preset-name">{item.name}</span>
                 <span className="preset-type">
                   {item.recipe.params.style === 'tech' ? 'Hard surface' : 'Electrical'}

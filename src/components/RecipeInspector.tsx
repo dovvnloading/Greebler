@@ -13,6 +13,8 @@ import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import type { CompletedMaterial } from '../export/materialMaps';
 import {
+  componentLabels,
+  hardwarePatterns,
   convertRecipeVersion,
   createGenerationRecipe,
   DEFAULT_FINISH,
@@ -117,6 +119,27 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
             <option value="electrical">Electrical</option>
           </select>
         </div>
+        {studio && (
+          <div className="property-line">
+            <label htmlFor="panel-pattern">Panel pattern</label>
+            <select
+              id="panel-pattern"
+              value={params.panelPattern ?? ''}
+              onChange={(event) => {
+                const value = event.target.value;
+                edit('panelPattern', value === 'mixed' ? value : hardwarePatterns.find((pattern) => pattern === value));
+              }}
+            >
+              <option value="">Style default</option>
+              <option value="mixed">Mixed hardware</option>
+              {hardwarePatterns.map((pattern) => (
+                <option key={pattern} value={pattern}>
+                  {componentLabels[pattern]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="property-line">
           <label htmlFor="seed-input">Seed</label>
           <NumberDial
