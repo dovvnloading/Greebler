@@ -9,6 +9,7 @@ export interface SwatchTextures {
   orm: THREE.Texture;
   height: THREE.Texture;
   packedHeight: boolean;
+  meshSource: Uint8Array | Blob;
   size: number;
   id: string;
   dispose: () => void;
@@ -107,9 +108,11 @@ export async function loadSwatchTextures(
   const size = Math.min(MAX_SWATCH_SIZE, sourceSize);
   const resize = size === sourceSize ? undefined : size;
   const packedHeight = material.recipe.version === 2;
+  let meshSource: Uint8Array | Blob = material.blobs.height;
   const height = async () => {
     if (!packedHeight) return loadImage(material.blobs.height, resize);
     const field = await readHeight(material.blobs.height, signal);
+    meshSource = field.pixels;
     const texture = new THREE.DataTexture(
       field.pixels,
       field.width,
@@ -167,6 +170,7 @@ export async function loadSwatchTextures(
     orm,
     height: field,
     packedHeight,
+    meshSource,
     id: getGenerationRecipeId(material.recipe),
     size,
     dispose,

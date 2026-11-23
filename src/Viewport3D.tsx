@@ -1,11 +1,27 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react';
-import { Box, Circle, Focus, Layers2, Mountain, Pause, Play, Square, Sun, ChevronDown } from 'lucide-react';
+import {
+  Box,
+  Circle,
+  Focus,
+  Layers2,
+  Mountain,
+  Triangle,
+  Download,
+  Pause,
+  Play,
+  Square,
+  Sun,
+  ChevronDown,
+} from 'lucide-react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { getGenerationRecipeId } from './recipes';
 import type { CompletedMaterial } from './export/materialMaps';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { createSwatchGeometry, type SwatchShape } from './preview/swatchGeometry';
+import { renderStill } from './preview/renderStill';
+import { useAdaptiveMesh } from './preview/useAdaptiveMesh';
+import { createAdaptiveSwatchGeometry, createSwatchGeometry, type SwatchShape } from './preview/swatchGeometry';
 import { createReliefMaterial, type Shading } from './preview/reliefMaterial';
 import { loadSwatchTextures, type SwatchTextures } from './preview/swatchTextures';
 import { StudioLights } from './preview/StudioLights';
@@ -20,6 +36,11 @@ interface CameraMemory {
   target: THREE.Vector3;
 }
 
+interface MeshStatus {
+  message: string;
+  ready: boolean;
+}
+
 interface SceneProps {
   memory: CameraMemory;
   axis: Axis | null;
@@ -28,6 +49,9 @@ interface SceneProps {
   shape: SwatchShape;
   shading: Shading;
   rotating: boolean;
+  adaptive: boolean;
+  onMeshStatus: (status: MeshStatus) => void;
+  capture: RefObject<(() => Promise<Blob>) | null>;
   raking: boolean;
   azimuth: number;
   gain: number;
@@ -83,6 +107,9 @@ function Scene({
   shape,
   shading,
   rotating,
+  adaptive,
+  onMeshStatus,
+  capture,
   raking,
   azimuth,
   gain,
@@ -93,7 +120,7 @@ function Scene({
   axis,
   gizmo,
 }: SceneProps) {
-  const { camera, gl, invalidate, size, viewport, setDpr } = useThree();
+  const { camera, scene, gl, invalidate, size, viewport, setDpr } = useThree();
   const textures = useTextures(material, onError);
   const [orbiting, setOrbiting] = useState(false);
   const [motionLevel, setMotionLevel] = useState(0);
@@ -105,7 +132,35 @@ function Scene({
   const geometry = useMemo(() => createSwatchGeometry(shape, detail), [shape, detail]);
   const movingDetail = Math.min(80, detail);
   const movingGeometry = useMemo(() => createSwatchGeometry(shape, movingDetail), [shape, movingDetail]);
-  const visibleGeometry = reduced ? movingGeometry : geometry;
+  const materialId = useMemo(() => getGenerationRecipeId(material.recipe), [material.recipe]);
+  const source = adaptive && textures?.id === materialId ? textures.meshSource : null;
+  const { topology, error: meshError } = useAdaptiveMesh(source, shape);
+  const refined = useMemo(() => topology && createAdaptiveSwatchGeometry(shape, topology), [shape, topology]);
+  const visibleGeometry = reduced ? movingGeometry : (refined ?? geometry);
+  const usingRefined = refined !== null && visibleGeometry === refined;
+  const surfaceTriangles = (visibleGeometry.surface.getIndex()?.count ?? 0) / 3;
+  useEffect(() => {
+    if (adaptive) {
+      const message = usingRefined
+        ? `${surfaceTriangles.toLocaleString()} surface triangles`
+        : 'Refining displacement…';
+      onMeshStatus({ message: meshError ?? (refined && reduced ? 'Orbit preview' : message), ready: usingRefined });
+    }
+  }, [adaptive, meshError, usingRefined, refined, reduced, surfaceTriangles, onMeshStatus]);
+  useLayoutEffect(
+    () => () => {
+      refined?.surface.dispose();
+      refined?.backing?.dispose();
+    },
+    [refined],
+  );
+  useLayoutEffect(() => {
+    if (!usingRefined) return;
+    capture.current = () => renderStill(gl, scene, camera);
+    return () => {
+      capture.current = null;
+    };
+  }, [capture, usingRefined, camera, scene, gl]);
   const gridScale = shape === 'cube' ? 0.5 : shape === 'sphere' ? 0.75 : 1;
   const shader = useMemo(
     () => textures && createReliefMaterial(textures, geometry.tileWidth),
@@ -160,9 +215,9 @@ function Scene({
     [shader],
   );
   useLayoutEffect(() => {
-    shader?.update(shading, gain, (reduced ? movingDetail : detail) * gridScale, reduced);
+    shader?.update(shading, gain, (reduced ? movingDetail : detail) * gridScale, reduced, usingRefined);
     invalidate();
-  }, [shader, shading, gain, reduced, movingDetail, detail, gridScale, invalidate]);
+  }, [shader, shading, gain, reduced, movingDetail, detail, gridScale, usingRefined, invalidate]);
   useLayoutEffect(() => {
     timing.current = { previous: 0, slowFrames: 0, frames: 0 };
     if (!motion) setMotionLevel(0);
@@ -277,6 +332,8 @@ function Scene({
             castShadow
             receiveShadow
             onAfterRender={() => {
+              gl.domElement.dataset.displacementMode = usingRefined ? 'adaptive' : 'preview';
+              gl.domElement.dataset.surfaceTriangles = String(surfaceTriangles);
               if (gl.domElement.dataset.materialId === textures.id) return;
               gl.domElement.dataset.materialId = textures.id;
               gl.domElement.dataset.materialSize = String(textures.size);
@@ -330,6 +387,11 @@ export function Viewport3D({
 }) {
   const [shape, setShape] = useState<SwatchShape>('plate');
   const [shading, setShading] = useState<Shading>('material');
+  const [adaptive, setAdaptive] = useState(false);
+  const [meshStatus, setMeshStatus] = useState<MeshStatus | null>(null);
+  const capture = useRef<(() => Promise<Blob>) | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [raking, setRaking] = useState(false);
   const [azimuth, setAzimuth] = useState(0);
   const [enhanced, setEnhanced] = useState(false);
@@ -379,6 +441,27 @@ export function Viewport3D({
     if (!hasContext) onUnavailable?.();
   }, [active, onUnavailable]);
   if (!active && (!keepWarm || available !== true || resident.current !== material.recipe)) return null;
+  async function saveStill() {
+    if (!capture.current || saving) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      const image = await capture.current();
+      const url = URL.createObjectURL(image);
+      try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `greebler-${getGenerationRecipeId(material.recipe)}-${shape}.png`;
+        link.click();
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : 'Could not save the render.');
+    } finally {
+      setSaving(false);
+    }
+  }
   function frameView(nextAxis: Axis | null) {
     setAxis(nextAxis);
     setFrame((value) => value + 1);
@@ -404,6 +487,9 @@ export function Viewport3D({
                 material={material}
                 shape={shape}
                 shading={shading}
+                adaptive={adaptive}
+                onMeshStatus={setMeshStatus}
+                capture={capture}
                 rotating={active && rotating}
                 raking={raking}
                 azimuth={azimuth}
@@ -470,6 +556,23 @@ export function Viewport3D({
             </fieldset>
           </>
         )}
+        {available && adaptive && !error && (
+          <div className="mw-mesh-status">
+            <span role="status">{saveError || meshStatus?.message || 'Refining displacement…'}</span>
+            {meshStatus?.ready && (
+              <button
+                type="button"
+                aria-label="Save displacement render"
+                title="Save a 2048 px PNG of this view"
+                disabled={saving}
+                onClick={saveStill}
+              >
+                <Download size={13} aria-hidden="true" />
+                {saving ? 'Saving…' : 'Save render'}
+              </button>
+            )}
+          </div>
+        )}
         {error && (
           <p role="alert" className="mw-render-error">
             {error}
@@ -478,6 +581,20 @@ export function Viewport3D({
       </div>
       <footer className="mw-light-bar">
         <div className="mw-inspect-toggles">
+          <button
+            type="button"
+            aria-label="Sub-polygon displacement"
+            title="Adaptively subdivide the mesh from the baked height map"
+            aria-pressed={adaptive}
+            onClick={() => {
+              setMeshStatus(null);
+              setSaveError('');
+              setAdaptive((value) => !value);
+            }}
+          >
+            <Triangle size={15} aria-hidden="true" />
+            <span>Sub-polygon</span>
+          </button>
           <button
             type="button"
             aria-label="Raking light"

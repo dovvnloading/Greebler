@@ -371,6 +371,7 @@
   border-left: 1px solid #383c40;
   padding-left: 10px;
 }
+.mw-mesh-status,
 .mw-render-error,
 .mw-no-webgl {
   position: absolute;
@@ -384,6 +385,28 @@
   color: #ffd1a9;
   background: #252525;
   border-radius: 2px;
+}
+.mw-mesh-status {
+  max-width: calc(100% - 88px);
+  right: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 9px;
+  color: #e1e3e5;
+  font-variant-numeric: tabular-nums;
+}
+.mw-mesh-status button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid #555a60;
+  border-radius: 3px;
+  color: #eceef0;
+}
+.mw-mesh-status button:hover {
+  background: #42474c;
 }
 .mw-no-webgl {
   top: 44px;

@@ -29,13 +29,14 @@ uniform float texelSize;
 uniform int shadingMode;
 uniform bool bakedNormals;
 uniform bool fastMotion;
+uniform bool adaptiveSurface;
 float field(vec2 uv, vec2 dx, vec2 dy) {
   return dot(textureGrad(swatchHeight, uv, dx, dy).rg, heightWeights);
 }
 // Intersect the viewing ray with the height field relative to the already displaced
 // triangle. The same hit UV drives all material channels, including the local shadow.
 vec2 intersectRelief(vec2 uv, vec2 dx, vec2 dy, vec3 eye, vec2 metric) {
-  if (fastMotion) return uv;
+  if (fastMotion || adaptiveSurface) return uv;
   vec2 travel = eye.xy / max(eye.z, 0.18) * metric;
   float pixels = length(travel) / max(texelSize, max(length(dx), length(dy)));
   if (pixels < 0.65) return uv;
@@ -83,6 +84,7 @@ export function createReliefMaterial(textures: SwatchTextures, tileWidth: number
     shadingMode: { value: 0 },
     bakedNormals: { value: textures.packedHeight },
     fastMotion: { value: false },
+    adaptiveSurface: { value: false },
   };
   const material = new THREE.MeshStandardMaterial({
     map: textures.albedo,
@@ -176,8 +178,9 @@ export function createReliefMaterial(textures: SwatchTextures, tileWidth: number
   return {
     material,
     depth,
-    update(shading: Shading, gain: number, gridSegments: number, fastMotion: boolean) {
-      uniforms.meshLod.value = Math.max(0, Math.log2(textures.size / gridSegments));
+    update(shading: Shading, gain: number, gridSegments: number, fastMotion: boolean, adaptiveSurface = false) {
+      uniforms.meshLod.value = adaptiveSurface ? 0 : Math.max(0, Math.log2(textures.size / gridSegments));
+      uniforms.adaptiveSurface.value = adaptiveSurface;
       uniforms.fastMotion.value = fastMotion;
       uniforms.inspectGain.value = gain;
       uniforms.reliefRange.value = gain * tileWidth * RELIEF_RANGE_PER_TILE;
