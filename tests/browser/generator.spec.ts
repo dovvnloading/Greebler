@@ -1,51 +1,74 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-test('renders generated maps and responds to core controls', async ({ page }) => {
+async function selectOption(page: Page, id: string, name: string) {
+  await page.locator(id).click();
+  await page.getByRole('button', { name, exact: true }).click();
+}
+
+async function disableWebGL(page: Page) {
+  await page.addInitScript(() => {
+    HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.getContext, {
+      apply(target, canvas, args) {
+        if (args[0] === 'webgl2' || args[0] === 'webgl' || args[0] === 'experimental-webgl') return null;
+        return Reflect.apply(target, canvas, args);
+      },
+    });
+  });
+}
+
+test('renders the 3D preview and regenerates the selected map size', async ({ page }) => {
+  // The preview's lighting must work without third-party assets.
+  await page.route(/^https?:\/\//, (route) => {
+    if (new URL(route.request().url()).hostname === '127.0.0.1') return route.continue();
+    return route.abort();
+  });
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'GREEBLE' })).toBeVisible();
-  await expect(page.getByRole('img', { name: 'albedo map' })).toBeVisible({ timeout: 30_000 });
+  const albedoMap = page.getByRole('img', { name: 'albedo map' });
+  await expect(albedoMap).toHaveJSProperty('naturalWidth', 1024);
+  const preview = page.locator('canvas[data-engine]');
+  await expect(preview).toBeVisible();
+  const sphere = page.getByRole('button', { name: 'Sphere', exact: true });
+  await sphere.click();
+  await expect(sphere).toHaveAttribute('aria-pressed', 'true');
+  const rotate = page.getByRole('button', { name: 'Rotate preview' });
+  await expect(rotate).toHaveAttribute('aria-pressed', 'false');
+  await rotate.click();
+  await expect(rotate).toHaveAttribute('aria-pressed', 'true');
+  await rotate.click();
+  await expect(rotate).toHaveAttribute('aria-pressed', 'false');
 
   const seedInput = page.locator('#seed-input');
-  const originalSeed = await seedInput.inputValue();
+  await seedInput.fill('-1');
   await page.getByRole('button', { name: 'Randomize Seed' }).click();
-  await expect(seedInput).not.toHaveValue(originalSeed);
+  await expect(seedInput).not.toHaveValue('-1');
 
-  await page.locator('#style-select').click();
-  const electricalOption = page.getByRole('button', { name: 'Electrical' });
-  await expect(electricalOption).toBeVisible({ timeout: 30_000 });
-  await electricalOption.click({ force: true });
-  await expect(page.locator('#style-select')).toContainText('Electrical');
-
+  await selectOption(page, '#resolution-select', '512x512');
   await page.getByRole('button', { name: 'Generate Maps' }).click();
-  await expect(page.getByRole('img', { name: 'albedo map' })).toBeVisible({ timeout: 30_000 });
+  await expect(albedoMap).toHaveJSProperty('naturalWidth', 512);
+  await expect(preview).toBeVisible();
 });
 
-test('keeps authored electrical materials visible in the final albedo map', async ({ page }) => {
+test('generates and exports authored electrical materials when WebGL is unavailable', async ({ page }) => {
+  await disableWebGL(page);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
+  await expect(page.getByText(/3D preview unavailable/i)).toBeVisible();
 
   const albedoMap = page.getByRole('img', { name: 'albedo map' });
-  await expect(albedoMap).toBeVisible({ timeout: 30_000 });
-  const initialAlbedo = await albedoMap.getAttribute('src');
-
-  await page.locator('#resolution-select').click();
-  const lowResolutionOption = page.getByRole('button', { name: '512x512' });
-  await expect(lowResolutionOption).toBeVisible({ timeout: 30_000 });
-  await lowResolutionOption.click({ force: true });
-
-  await page.locator('#style-select').click();
-  const electricalOption = page.getByRole('button', { name: 'Electrical' });
-  await expect(electricalOption).toBeVisible({ timeout: 30_000 });
-  await electricalOption.click({ force: true });
-  await expect(page.locator('#style-select')).toContainText('Electrical');
+  await expect(albedoMap).toHaveJSProperty('naturalWidth', 1024);
+  await selectOption(page, '#resolution-select', '512x512');
+  await selectOption(page, '#style-select', 'Electrical');
   await page.getByRole('button', { name: 'Generate Maps' }).click();
-  await expect.poll(() => albedoMap.getAttribute('src'), { timeout: 30_000 }).not.toBe(initialAlbedo);
+  await expect(albedoMap).toHaveJSProperty('naturalWidth', 512);
   const electricalAlbedo = await albedoMap.getAttribute('src');
   if (!electricalAlbedo) throw new Error('Electrical albedo map did not produce an image source.');
 
-  await page.getByRole('button', { name: 'Height' }).click({ force: true });
+  await page.getByRole('button', { name: 'Height', exact: true }).click();
   const heightMap = page.getByRole('img', { name: 'height map' });
-  await expect(heightMap).toBeVisible({ timeout: 30_000 });
+  await expect(heightMap).toHaveJSProperty('naturalWidth', 512);
   const heightSource = await heightMap.getAttribute('src');
   if (!heightSource) throw new Error('Height map did not produce an image source.');
 
@@ -93,4 +116,47 @@ test('keeps authored electrical materials visible in the final albedo map', asyn
   );
 
   expect(divergentPixels).toBeGreaterThan(0);
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'HGT', exact: true }).click();
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toBe('greeble_height.png');
+  expect(await file.failure()).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('keeps the last usable maps after a PNG encoding error and recovers on retry', async ({ page }) => {
+  await disableWebGL(page);
+  await page.goto('/');
+  const albedo = page.getByRole('img', { name: 'albedo map' });
+  await expect(albedo).toHaveJSProperty('naturalWidth', 1024);
+  const previous = await albedo.getAttribute('src');
+  if (!previous) throw new Error('Missing initial albedo.');
+
+  await selectOption(page, '#resolution-select', '512x512');
+  await page.evaluate(() => {
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = (callback) => {
+      HTMLCanvasElement.prototype.toBlob = original;
+      callback(null);
+    };
+  });
+  const generate = page.getByRole('button', { name: 'Generate Maps' });
+  await generate.click();
+  await expect(page.getByRole('alert')).toContainText('PNG');
+  await expect(albedo).toHaveAttribute('src', previous);
+  expect(await page.evaluate(async (url) => (await fetch(url)).ok, previous)).toBe(true);
+
+  await generate.click();
+  await expect(albedo).toHaveJSProperty('naturalWidth', 512);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      (url) =>
+        fetch(url).then(
+          () => true,
+          () => false,
+        ),
+      previous,
+    ),
+  ).toBe(false);
 });

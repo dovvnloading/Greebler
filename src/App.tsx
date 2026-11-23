@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { TextureGenerator, type GenerationParams } from './TextureGenerator';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { TextureGenerator, type GenerationParams, type TextureMaps } from './TextureGenerator';
 import { Viewport3D } from './Viewport3D';
 import { Viewport2D } from './Viewport2D';
-import { Settings, Download, RefreshCcw, Box, Circle, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Settings, Download, RefreshCcw, Layers, Palette, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PALETTE_PRESETS, generatePalette } from './utils/colorUtils';
 import { SliderControl } from './components/SliderControl';
 import { ExportButton } from './components/ExportButton';
 import { TabButton } from './components/TabButton';
-import { IconButton } from './components/IconButton';
 import { CustomSelect } from './components/CustomSelect';
 import { NumberDial } from './components/NumberDial';
 
@@ -23,67 +22,94 @@ const defaultParams: GenerationParams = {
   palette: PALETTE_PRESETS.Default,
 };
 
+function createMapUrls(blobs: TextureMaps<Blob>): TextureMaps<string> {
+  const created: string[] = [];
+  const createUrl = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    created.push(url);
+    return url;
+  };
+  try {
+    return {
+      albedo: createUrl(blobs.albedo),
+      height: createUrl(blobs.height),
+      normal: createUrl(blobs.normal),
+      roughness: createUrl(blobs.roughness),
+      metalness: createUrl(blobs.metalness),
+    };
+  } catch (error) {
+    for (const url of created) URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+function releaseMapUrls(maps: TextureMaps<string>) {
+  for (const url of Object.values(maps)) URL.revokeObjectURL(url);
+}
+
+const emptyMaps = { albedo: null, height: null, normal: null, roughness: null, metalness: null };
+
 export default function App() {
   const [params, setParams] = useState<GenerationParams>(defaultParams);
-  const [maps, setMaps] = useState<{
-    albedo: string | null;
-    height: string | null;
-    normal: string | null;
-    roughness: string | null;
-    metalness: string | null;
-  }>({
-    albedo: null,
-    height: null,
-    normal: null,
-    roughness: null,
-    metalness: null,
-  });
+  const [generatedMaps, setMaps] = useState<TextureMaps<string> | null>(null);
+  const maps = generatedMaps ?? emptyMaps;
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const activeGeneration = useRef<AbortController | null>(null);
+  const ownedMaps = useRef<TextureMaps<string>[]>([]);
 
   // Viewport State
   const [activeTab2D, setActiveTab2D] = useState<'albedo' | 'height' | 'normal'>('albedo');
-  const [shape3D, setShape3D] = useState<'cube' | 'sphere'>('cube');
 
-  const handleGenerate = useCallback(() => {
+  const scheduleGeneration = useCallback((snapshot: GenerationParams, delay = 50) => {
+    activeGeneration.current?.abort();
+    const controller = new AbortController();
+    activeGeneration.current = controller;
+    const { signal } = controller;
     setIsGenerating(true);
     setGenerationError(null);
-    // Use setTimeout to allow UI to update to "generating" state before heavy sync work
-    setTimeout(() => {
+    const timer = window.setTimeout(async () => {
       try {
-        const generator = new TextureGenerator(params);
-        const newMaps = generator.generateMaps();
-        setMaps(newMaps);
+        const blobs = await new TextureGenerator(snapshot).generateMapBlobs(signal);
+        if (signal.aborted) return;
+        const urls = createMapUrls(blobs);
+        ownedMaps.current.push(urls);
+        setMaps(urls);
       } catch (error) {
-        setGenerationError(error instanceof Error ? error.message : 'Map generation failed unexpectedly.');
+        if (!signal.aborted) {
+          setGenerationError(error instanceof Error ? error.message : 'Map generation failed unexpectedly.');
+        }
       } finally {
-        setIsGenerating(false);
+        if (!signal.aborted) {
+          activeGeneration.current = null;
+          setIsGenerating(false);
+        }
       }
-    }, 50);
-  }, [params]);
+    }, delay);
+    signal.addEventListener('abort', () => window.clearTimeout(timer), { once: true });
+  }, []);
 
-  // Generate once on mount while keeping the callback dependency honest.
-  const hasGeneratedOnMount = React.useRef(false);
-  useEffect(() => {
-    if (hasGeneratedOnMount.current) return;
-    hasGeneratedOnMount.current = true;
-    handleGenerate();
-  }, [handleGenerate]);
-
-  // Auto-generate when palette changes
-  const prevPaletteRef = React.useRef(params.palette);
-  useEffect(() => {
-    if (prevPaletteRef.current !== params.palette) {
-      prevPaletteRef.current = params.palette;
-      const timer = setTimeout(() => {
-        handleGenerate();
-      }, 100);
-      return () => clearTimeout(timer);
+  // Keep the displayed URLs available to the preview and downloads until React commits their replacements.
+  useLayoutEffect(() => {
+    if (!generatedMaps) return;
+    const currentIndex = ownedMaps.current.indexOf(generatedMaps);
+    if (currentIndex > 0) {
+      for (const previous of ownedMaps.current.splice(0, currentIndex)) releaseMapUrls(previous);
     }
-  }, [params.palette, handleGenerate]);
+  }, [generatedMaps]);
+
+  useEffect(() => {
+    scheduleGeneration(defaultParams);
+    return () => {
+      activeGeneration.current?.abort();
+      for (const urls of ownedMaps.current.splice(0)) releaseMapUrls(urls);
+    };
+  }, [scheduleGeneration]);
 
   const handleParamChange = <K extends keyof GenerationParams>(key: K, value: GenerationParams[K]) => {
-    setParams((prev) => ({ ...prev, [key]: value }));
+    const nextParams = { ...params, [key]: value };
+    setParams(nextParams);
+    if (key === 'palette' && nextParams.palette !== params.palette) scheduleGeneration(nextParams, 100);
   };
 
   const handleRandomizeSeed = () => {
@@ -327,7 +353,7 @@ export default function App() {
           )}
           <button
             type="button"
-            onClick={handleGenerate}
+            onClick={() => scheduleGeneration(params)}
             disabled={isGenerating}
             className={`w-full mt-4 py-4 rounded-xl neu-convex font-bold tracking-[0.2em] uppercase text-xs transition-all flex items-center justify-center gap-3 border border-[rgba(255,255,255,0.05)]
               ${isGenerating ? 'text-[#8E9299] opacity-50 cursor-not-allowed' : 'text-[#F27D26] hover:brightness-110 active:neu-pressed'}`}
@@ -383,16 +409,7 @@ export default function App() {
 
         {/* 3D Viewport */}
         <div className="flex-1 neu-flat rounded-2xl p-4 flex flex-col relative min-h-[300px]">
-          {/* Controls */}
-          <div className="absolute top-6 left-6 z-10 flex gap-3">
-            <IconButton active={shape3D === 'cube'} onClick={() => setShape3D('cube')} icon={<Box size={16} />} />
-            <IconButton
-              active={shape3D === 'sphere'}
-              onClick={() => setShape3D('sphere')}
-              icon={<Circle size={16} />}
-            />
-          </div>
-          <div className="absolute top-6 right-6 z-10 text-[10px] font-mono text-[#8E9299] uppercase tracking-[0.15em]">
+          <div className="absolute bottom-6 right-6 z-10 pointer-events-none text-[10px] font-mono text-[#8E9299] uppercase tracking-[0.15em]">
             Displacement Preview
           </div>
           <Viewport3D
@@ -401,7 +418,6 @@ export default function App() {
             heightMap={maps.height}
             roughnessMap={maps.roughness}
             metalnessMap={maps.metalness}
-            shape={shape3D}
           />
         </div>
       </main>
