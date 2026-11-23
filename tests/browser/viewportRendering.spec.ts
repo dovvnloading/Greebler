@@ -174,21 +174,24 @@ test('mobile viewport keeps the mesh visible and frames it again after orbiting'
   await expect.poll(() => nativePixels.evaluate((node) => node.scrollLeft)).toBe(24);
 });
 
-test('sub-polygon displacement refines the active swatch and restores the parallax preview', async ({ page }) => {
-  let meshBuilds = 0;
-  page.on('worker', (worker) => {
-    if (worker.url().includes('adaptiveMesh.worker')) meshBuilds++;
-  });
-  const factory = await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8');
-  const recipe = parseGenerationRecipe(factory);
-  await page.addInitScript((json) => localStorage.setItem('greebler.editor.recipe', json), factory);
+async function loadDisplacement(page: Page, resolution: number) {
+  const factory = parseGenerationRecipe(
+    await readFile(new URL('../../examples/displacement.json', import.meta.url), 'utf8'),
+  );
+  const recipe = { ...factory, params: { ...factory.params, resolution } };
+  await page.addInitScript((json) => localStorage.setItem('greebler.editor.recipe', json), JSON.stringify(recipe));
   const { canvas, errors } = await loadPlate(page);
-  await page.getByRole('button', { name: 'Exaggerate relief (6×)', exact: true }).click();
-  const draftId = getGenerationRecipeId({ ...recipe, params: { ...recipe.params, resolution: 512 } });
+  const draftId = getGenerationRecipeId(recipe);
   await expect(canvas).toHaveAttribute('data-material-id', draftId);
+  const button = page.getByRole('button', { name: 'Sub-polygon displacement', exact: true });
+  return { canvas, errors, button, draftId };
+}
+
+test('sub-polygon displacement refines the swatch and saves a 2K still', async ({ page }) => {
+  const { canvas, errors, button, draftId } = await loadDisplacement(page, 512);
+  await page.getByRole('button', { name: 'Exaggerate relief (6×)', exact: true }).click();
   const standard = await sampleSurface(canvas);
   const baseCount = await canvas.getAttribute('data-surface-triangles');
-  const button = page.getByRole('button', { name: 'Sub-polygon displacement', exact: true });
   await button.click();
   await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
   await expect(page.getByRole('status').filter({ hasText: /surface triangles/ })).toBeVisible();
@@ -208,6 +211,18 @@ test('sub-polygon displacement refines the active swatch and restores the parall
   expect(png.length).toBeGreaterThan(32_000);
   expect(await canvas.evaluate((node: HTMLCanvasElement) => [node.width, node.height])).toEqual(originalSize);
   expect(differingPixels(refined, await sampleSurface(canvas))).toBeLessThan(0.03);
+  expect(errors).toEqual([]);
+});
+
+test('a finish change reuses the adaptive mesh before switching shapes and restoring parallax', async ({ page }) => {
+  let meshBuilds = 0;
+  page.on('worker', (worker) => {
+    if (worker.url().includes('adaptiveMesh.worker')) meshBuilds++;
+  });
+  const { canvas, errors, button, draftId } = await loadDisplacement(page, 256);
+  const baseCount = await canvas.getAttribute('data-surface-triangles');
+  await button.click();
+  await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
   const previousBuilds = meshBuilds;
   expect(previousBuilds).toBeGreaterThan(0);
   await page.getByLabel('Material finish', { exact: true }).selectOption('Burnished copper');
@@ -216,6 +231,7 @@ test('sub-polygon displacement refines the active swatch and restores the parall
   expect(meshBuilds).toBe(previousBuilds);
   const copperId = await canvas.getAttribute('data-material-id');
   await page.getByRole('button', { name: 'Sphere', exact: true }).click();
+  await expect.poll(() => meshBuilds).toBe(previousBuilds + 1);
   await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
   await page.getByRole('button', { name: 'Plate', exact: true }).click();
   await expect(canvas).toHaveAttribute('data-displacement-mode', 'adaptive', { timeout: 30_000 });
