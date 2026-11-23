@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
-import { link, mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -52,41 +53,46 @@ async function main() {
   }
   await mkdir(dir, { recursive: true });
   let destination;
-  const server = await createServer({
-    root: fileURLToPath(new URL('../', import.meta.url)),
-    configFile: false,
-    logLevel: 'error',
-    server: { host: '127.0.0.1', port: 0, hmr: false },
-    plugins: [
-      {
-        name: 'batch-entry',
-        configureServer(dev) {
-          dev.middlewares.use((request, response, next) => {
-            if (!destination || request.url !== destination.route || request.method !== 'POST') return next();
-            const { temp } = destination;
-            destination = undefined;
-            // Stream the Blob over loopback. No base64 or whole-archive copy crosses the automation pipe.
-            pipeline(request, createWriteStream(temp, { flags: 'wx' })).then(
-              () => {
-                response.writeHead(201);
-                response.end();
-              },
-              (error) => {
-                response.writeHead(500);
-                response.end(error.message);
-              },
-            );
-          });
-          dev.middlewares.use('/bake', (_req, res) => {
-            res.setHeader('Content-Type', 'text/html');
-            res.end('<!doctype html><title>Material bake</title>');
-          });
-        },
-      },
-    ],
-  });
+  // Batch processes and the live editor may use different Vite configurations concurrently.
+  const cacheDir = await mkdtemp(join(tmpdir(), 'greebler-bake-cache-'));
+  let server;
   let browser;
   try {
+    server = await createServer({
+      cacheDir,
+      optimizeDeps: { noDiscovery: true, include: ['fflate'] },
+      root: fileURLToPath(new URL('../', import.meta.url)),
+      configFile: false,
+      logLevel: 'error',
+      server: { host: '127.0.0.1', port: 0, hmr: false },
+      plugins: [
+        {
+          name: 'batch-entry',
+          configureServer(dev) {
+            dev.middlewares.use((request, response, next) => {
+              if (!destination || request.url !== destination.route || request.method !== 'POST') return next();
+              const { temp } = destination;
+              destination = undefined;
+              // Stream the Blob over loopback. No base64 or whole-archive copy crosses the automation pipe.
+              pipeline(request, createWriteStream(temp, { flags: 'wx' })).then(
+                () => {
+                  response.writeHead(201);
+                  response.end();
+                },
+                (error) => {
+                  response.writeHead(500);
+                  response.end(error.message);
+                },
+              );
+            });
+            dev.middlewares.use('/bake', (_req, res) => {
+              res.setHeader('Content-Type', 'text/html');
+              res.end('<!doctype html><title>Material bake</title>');
+            });
+          },
+        },
+      ],
+    });
     await server.listen();
     // CI and offline workstations can select an already-installed Chromium.
     browser = await chromium.launch({ executablePath: process.env.GREEBLER_CHROMIUM_EXECUTABLE || undefined });
@@ -164,7 +170,11 @@ async function main() {
     try {
       await browser?.close();
     } finally {
-      await server.close();
+      try {
+        await server?.close();
+      } finally {
+        await rm(cacheDir, { recursive: true, force: true });
+      }
     }
   }
 }

@@ -152,7 +152,10 @@ export const Viewport3D = (props: Viewport3DProps) => {
   const [raking, setRaking] = useState(false);
   const [enhancedRelief, setEnhancedRelief] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
+  const checked = useRef(false);
   useEffect(() => {
+    if (checked.current) return;
+    checked.current = true;
     setAvailable(supportsWebGL2());
   }, []);
 
