@@ -12,6 +12,7 @@
     "palette": ["#10191b", "#263a38", "#4b635b", "#a4aa90", "#e2d6ad"],
     "normalStrength": 1.2,
     "aoStrength": 1.15,
-    "wear": 0.24
+    "wear": 0.24,
+    "reliefProfile": "formed"
   }
 }

@@ -2,16 +2,16 @@
 
 Greebler is a procedural hard-surface material editor. Build repeating service panels and circuit assemblies, inspect their relief under studio or raking light, and export the same material from an artist workstation or a build job. [Open the editor](https://dovvnloading.github.io/Greebler/)
 
-![Service deck and relay board rendered in Blender Cycles, with tiled albedo and matching height, normal and ORM details](docs/materials.webp)
+![Previous and current WebGL material viewports, including a comparison with a matched mesh and camera](docs/viewport-comparison.webp)
 
-Both swatches were rendered from the included 2048 px recipes. The upper row shows the materials on displaced slabs in Blender Cycles. The lower row shows the albedo repeated across tile boundaries and corresponding map details. [Service deck recipe](examples/service-deck.json) · [Relay board recipe](examples/relay-board.json)
+The camera-matched comparison uses the same service-deck height recipe, tessellation and physical scale in both viewports. The default views show how the included materials open in the editor. [Service deck recipe](examples/service-deck.json) · [Relay board recipe](examples/relay-board.json)
 
 ## Author a material
 
 1. Choose a material preset or edit the default Tech material. Large Panels, Medium Details and Small Greebles control the population of the assembly. The main seed sets the layout. Open **Variation seeds** to change the fitted components or the machining finish independently. Open **Panel components** to select a specific bay on the tile and fit a cover, radiator, terminal block or controller board. Overrides are saved in the recipe and can be undone individually.
 2. Adjust the palette, gap size, edge wear, normal strength and occlusion. Undo and redo are available from the toolbar or with Ctrl/⌘ Z and Ctrl/⌘ Shift Z. The editor restores the last accepted recipe on reload. **Save recipe** writes a portable JSON file.
-3. Inspect the seven channels individually. **2×2** shows joins across neighboring tiles. **1:1** shows the completed bake at native resolution. Use the 3D view for shape, raking light, exaggerated displacement and turntable inspection.
-4. Edits generate a preview up to 512 px. Choose a resolution and press **Bake** for a full-size material. Large bakes retain a smaller GPU preview. **Export maps** shows the dimensions and recipe ID of the last completed result. Canceling or failing a bake preserves that result.
+3. Orbit the beveled plate to inspect its displaced surface and edge. Use **Light angle** to sweep the studio light and reflections across a stationary part. **Raking light** reveals shallow tooling. Choose **Clay** to judge the shape without paint or metal variation, or **Height** to inspect the field directly. **6× relief** exaggerates the slopes and silhouette for inspection. **Frame material** resets the camera. The cube, sphere and plane provide additional checks for corners, poles and flat tiling.
+4. Edits generate a preview up to 512 px. Press **Bake** for full-size exports. The viewport displays the completed maps at native size through 2048 px and filters larger bakes to 2048 px for the GPU. Its footer shows the uploaded texture size. In the map inspector, **2×2** shows joins across neighboring tiles and **1:1** shows the completed bake at native resolution. **Export maps** shows the dimensions and recipe ID of the last completed result. Canceling or failing a bake preserves that result.
 5. Choose an export target and download the ZIP. Individual PNGs are also available. Version 1 recipes keep their original five maps and recipe IDs. Their package includes derived occlusion and ORM, and the glTF swatch leaves the legacy gradient normal unbound.
 
 ## Material data and import
@@ -26,7 +26,13 @@ Both swatches were rendered from the included 2048 px recipes. The upper row sho
 | AO | 8-bit grayscale, linear | Height-field occlusion sampled at two radii |
 | ORM | 8-bit RGB, linear | Red occlusion, green roughness, blue metallic |
 
-The table describes Studio v2. Height includes sub-8-bit machining relief. At unit normal strength the full displacement range corresponds to 9.765625 mm for a one-meter tile. Occlusion estimates local relief within the repeating tile. Lighting and shadows from surrounding scene geometry belong to the target renderer.
+New Studio v2 recipes use the **Formed edges and curved tubing** height profile. Edges have a physical roundover, hoses have an elliptical cross-section and louver blades have a folded lip. Their tangent-space normals come from the same 16-bit height field as displacement. The coating and machined metal carry different microrelief. Loading an existing recipe retains its recorded output and ID. Choosing a different height profile creates a new recipe ID.
+
+At unit normal strength the full displacement range corresponds to 9.765625 mm for a one-meter tile. The viewport displaces the mesh at its sampling resolution, then follows the viewing ray through the remaining height detail. Every PBR channel uses the resulting surface coordinate. Native 16-bit height values are retained at texel centers, and smaller mip levels filter complete height samples. Ambient occlusion estimates local relief at two radii and, for the formed profile, in eight directions.
+
+![Exported service-deck and relay-board materials rendered in Blender Cycles, including tiled albedo and corresponding height, normal and ORM](docs/materials.webp)
+
+These Blender Cycles renders use the included 2048 px recipes and their exported maps. The lower row shows the repeating albedo and detail crops of height, tangent-space normal and packed ORM.
 
 | Package target | What to import |
 | --- | --- |
@@ -52,7 +58,16 @@ Use `--force` to replace existing outputs. Set `GREEBLER_CHROMIUM_EXECUTABLE` to
 
 ## Measured performance
 
-A Linux headless Chromium run with nine reported hardware threads baked the default Tech material at seed 12345. A 16 ms timer on the browser page measured how long UI callbacks went unserviced. The 4K comparison used the production editors with their previews loaded. Bake times include PNG encoding.
+Two consecutive 8192² service-deck bakes used fresh headless Chromium processes on the same Linux host. Both runs encoded all seven PNGs in a worker. The height profile was the only recipe change.
+
+| Height profile | Bake time | PNG total | Peak sampled browser PSS | Longest UI timer interval |
+| --- | ---: | ---: | ---: | ---: |
+| Original raster | 34.9 s | 44.3 MiB | 498 MiB | 99 ms |
+| Formed edges and curved tubing | 49.0 s | 83.1 MiB | 541 MiB | 125 ms |
+
+The formed bake completed 2,977 callbacks on a 16 ms page timer. A separate cancellation during 8K PNG encoding settled in 1.6 ms and the next 256 px bake completed in 922 ms. These measurements cover baking, including PNG encoding. Viewport frame times depend on the graphics hardware, area and device pixel ratio. During slow orbits the viewer reduces mesh and shading cost, then restores full quality when the camera stops.
+
+The following baseline uses the original raster profile, the default Tech material and seed 12345. Linux headless Chromium reported nine hardware threads. A 16 ms timer on the browser page measured how long UI callbacks went unserviced. The 4K comparison used the production editors with their previews loaded. Bake times include PNG encoding.
 
 | Run | PNGs | Bake time | Longest gap in the UI timer |
 | --- | ---: | ---: | ---: |
@@ -69,7 +84,7 @@ The Blender importer accepts a ZIP, an extracted package directory or its manife
 ```bash
 blender --background --factory-startup --python-exit-code 1 \
   --python tools/blender_material.py -- \
-  bakes/greebler-tech-2048-g2-7944419d.zip --tile-width-m 1 --out bakes/service-deck.blend
+  bakes/greebler-tech-2048-g2-a30bfe08.zip --tile-width-m 1 --out bakes/service-deck.blend
 ```
 
 Add the output directory as an asset library in Blender or append the material from the file. Replacing a previous library requires `--force`.

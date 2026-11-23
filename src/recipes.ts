@@ -20,6 +20,7 @@ export interface GenerationParams {
   detailSeed?: number;
   finishSeed?: number;
   panelOverrides?: PanelOverrides;
+  reliefProfile?: 'formed';
   normalStrength?: number;
   aoStrength?: number;
   wear?: number;
@@ -65,6 +66,7 @@ export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
     ((p.detailSeed === undefined || Number.isSafeInteger(p.detailSeed)) &&
       (p.finishSeed === undefined || Number.isSafeInteger(p.finishSeed)) &&
       validPanelOverrides(p.panelOverrides) &&
+      (p.reliefProfile === undefined || p.reliefProfile === 'formed') &&
       (p.normalStrength === undefined || inRange(p.normalStrength, 0, 4)) &&
       (p.aoStrength === undefined || inRange(p.aoStrength, 0, 2)) &&
       (p.wear === undefined || inRange(p.wear, 0, 1)))
@@ -98,6 +100,7 @@ export function cloneGenerationRecipe(recipe: GenerationRecipe): GenerationRecip
       ...(p.detailSeed === undefined ? {} : { detailSeed: p.detailSeed }),
       ...(p.finishSeed === undefined ? {} : { finishSeed: p.finishSeed }),
       ...(overrides.length ? { panelOverrides: Object.fromEntries(overrides) } : {}),
+      ...(p.reliefProfile ? { reliefProfile: p.reliefProfile } : {}),
       normalStrength: p.normalStrength ?? DEFAULT_FINISH.normalStrength,
       aoStrength: p.aoStrength ?? DEFAULT_FINISH.aoStrength,
       wear: p.wear ?? DEFAULT_FINISH.wear,

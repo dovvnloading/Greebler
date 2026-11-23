@@ -24,6 +24,7 @@ import { CustomSelect } from './components/CustomSelect';
 import { NumberDial } from './components/NumberDial';
 
 const defaultParams: GenerationParams = {
+  reliefProfile: 'formed',
   style: 'tech',
   resolution: 1024,
   seed: 12345,
@@ -75,7 +76,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', shortcut);
   }, []);
   const params = recipe.params;
-  const { material, preview, render, progress, cancel, error } = useMaterialSession();
+  const { material, render, progress, cancel, error } = useMaterialSession();
   const [importError, setImportError] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -175,7 +176,14 @@ export default function App() {
             <CustomSelect
               id="renderer-select"
               value={recipe.version}
-              onChange={(version) => setRecipe(convertRecipeVersion(recipe, version))}
+              onChange={(version) => {
+                const next = convertRecipeVersion(recipe, version);
+                setRecipe(
+                  version === 2
+                    ? createGenerationRecipe({ ...generationParamsFromRecipe(next), reliefProfile: 'formed' }, 2)
+                    : next,
+                );
+              }}
               options={[
                 { label: 'Studio v2', value: 2 },
                 { label: 'Legacy v1', value: 1 },
@@ -289,13 +297,13 @@ export default function App() {
             <PanelEditor
               recipe={recipe}
               previewUrl={
-                preview &&
-                serializeGenerationRecipe(preview.recipe) ===
+                material &&
+                serializeGenerationRecipe(material.recipe) ===
                   serializeGenerationRecipe({
                     ...recipe,
-                    params: { ...params, resolution: preview.recipe.params.resolution },
+                    params: { ...params, resolution: material.recipe.params.resolution },
                   })
-                  ? preview.urls.albedo
+                  ? material.urls.albedo
                   : undefined
               }
               onChange={(panelOverrides) =>
@@ -476,6 +484,18 @@ export default function App() {
           {recipe.version === 2 && (
             <div className="flex flex-col gap-5">
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em]">Surface finish</h3>
+              <label className="text-xs text-[#c2c6cb]" htmlFor="relief-profile">
+                Height profile
+              </label>
+              <CustomSelect
+                id="relief-profile"
+                value={params.reliefProfile ?? 'original'}
+                options={[
+                  { label: 'Formed edges and curved tubing', value: 'formed' },
+                  { label: 'Original raster', value: 'original' },
+                ]}
+                onChange={(value) => handleParamChange('reliefProfile', value === 'formed' ? 'formed' : undefined)}
+              />
               <SliderControl
                 id="normal-strength"
                 label="Normal strength"
@@ -574,26 +594,22 @@ export default function App() {
             </p>
           </div>
         </div>
-        <MapInspector material={material} preview={preview} />
-
-        {/* 3D Viewport */}
-        <div className="flex-1 neu-flat rounded-2xl p-4 flex flex-col relative min-h-[300px] overflow-hidden">
-          <div className="absolute bottom-6 right-6 z-10 pointer-events-none text-[10px] font-mono text-[#8E9299] uppercase tracking-[0.15em]">
-            Displacement Preview
-          </div>
-          <Suspense fallback={<p role="status">Loading 3D preview…</p>}>
-            {preview ? (
-              <Viewport3D
-                albedoMap={preview.urls.albedo}
-                normalMap={preview.recipe.version === 2 ? preview.urls.normal : null}
-                heightMap={preview.urls.height}
-                ormMap={preview.urls.orm}
-              />
+        <section className="studio-swatch" aria-label="Material preview">
+          <Suspense
+            fallback={
+              <p role="status" className="m-auto">
+                Loading 3D preview…
+              </p>
+            }
+          >
+            {material ? (
+              <Viewport3D material={material} />
             ) : (
               <p className="m-auto text-xs">Preparing material preview…</p>
             )}
           </Suspense>
-        </div>
+        </section>
+        <MapInspector material={material} />
       </main>
     </div>
   );

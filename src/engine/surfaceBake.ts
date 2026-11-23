@@ -74,6 +74,51 @@ export class SurfaceFinish {
   }
 }
 
+// Fine, tile-periodic grain for baked material finishes. The coarser coating field supplies
+// finish variation while the high-frequency field fades before the sampling Nyquist limit.
+export class FormedFinish {
+  private readonly grain = new Uint8Array(256 * 256);
+  private readonly index: Uint8Array;
+  private readonly blend: Float32Array;
+  private readonly amplitude: number;
+  constructor(
+    size: number,
+    seed: number,
+    private readonly finish: SurfaceFinish,
+  ) {
+    let state = (seed ^ Math.imul(Math.floor(seed / 4294967296), 0x85ebca6b) ^ 0x6d2b79f5) >>> 0;
+    for (let i = 0; i < this.grain.length; i++) {
+      state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+      this.grain[i] = state >>> 24;
+    }
+    this.index = new Uint8Array(size);
+    this.blend = new Float32Array(size);
+    this.amplitude = Math.max(0, Math.min(1, (size - 256) / 512));
+    for (let i = 0; i < size; i++) {
+      const coordinate = ((i + 0.5) * 256) / size;
+      const cell = Math.floor(coordinate);
+      const t = coordinate - cell;
+      this.index[i] = cell;
+      this.blend[i] = t * t * (3 - 2 * t);
+    }
+  }
+
+  height(base: number, x: number, y: number, paint: number, metal: number) {
+    const a = this.index[y] * 256,
+      b = ((this.index[y] + 1) & 255) * 256;
+    const left = this.index[x],
+      right = (left + 1) & 255;
+    const u = this.blend[x];
+    const rowA = this.grain[a + left] + u * (this.grain[a + right] - this.grain[a + left]);
+    const rowB = this.grain[b + left] + u * (this.grain[b + right] - this.grain[b + left]);
+    const isotropic = (rowA + this.blend[y] * (rowB - rowA) - 127.5) * this.amplitude;
+    // Powder coat has a pebbled finish, while exposed metal carries directional tool marks.
+    const texture = isotropic * (0.32 + paint / 180) + this.finish.machining(x, y) * (12 + metal * 0.55);
+    const coating = (this.finish.coating(x, y) - 0.5) * (100 + paint * 0.58);
+    return Math.max(0, Math.min(65535, Math.round(base + coating + texture)));
+  }
+}
+
 function horizonTable(radius: number, resolution: number) {
   const table = new Float32Array(511);
   for (let step = 1; step <= 255; step++) {
@@ -89,6 +134,8 @@ export class ReliefField {
   private far: number;
   private nearHorizon: Float32Array;
   private farHorizon: Float32Array;
+  private nearDiagonal?: Float32Array;
+  private farDiagonal?: Float32Array;
   private left: Int32Array;
   private right: Int32Array;
   private farLeft: Int32Array;
@@ -97,12 +144,17 @@ export class ReliefField {
   constructor(
     readonly heights: Uint16Array,
     size: number,
+    private readonly formed = false,
   ) {
     this.size = size;
     this.near = Math.max(1, Math.round(size / 512));
     this.far = Math.max(2, Math.round(size / 85));
     this.nearHorizon = horizonTable(this.near, size);
     this.farHorizon = horizonTable(this.far, size);
+    if (formed) {
+      this.nearDiagonal = horizonTable(this.near * Math.SQRT2, size);
+      this.farDiagonal = horizonTable(this.far * Math.SQRT2, size);
+    }
     this.left = Int32Array.from({ length: size }, (_, x) => wrap(x - this.near, size));
     this.right = Int32Array.from({ length: size }, (_, x) => wrap(x + this.near, size));
     this.farLeft = Int32Array.from({ length: size }, (_, x) => wrap(x - this.far, size));
@@ -122,8 +174,8 @@ export class ReliefField {
     };
   }
 
-  // Approximate the hemisphere integral with horizon elevations at two surface-space
-  // radii in each cardinal direction. An isolated flat plane is fully unoccluded.
+  // Integrate the horizon at two material-space radii. Formed surfaces include all
+  // eight compass directions, while the original profile uses four.
   occlusion(x: number, rows: ReturnType<ReliefField['rowOffsets']>, strength: number) {
     if (strength === 0) return 255;
     const h = this.heights;
@@ -140,7 +192,29 @@ export class ReliefField {
       a[center + (h[rows.row + this.left[x]] >>> 8)],
       b[center + (h[rows.row + this.farLeft[x]] >>> 8)],
     );
-    return clampByte(255 * (1 - strength * (north + south + east + west) * 0.25));
+    const cardinal = north + south + east + west;
+    if (this.nearDiagonal && this.farDiagonal) {
+      const a = this.nearDiagonal,
+        b = this.farDiagonal;
+      const ne = Math.max(
+        a[center + (h[rows.north + this.right[x]] >>> 8)],
+        b[center + (h[rows.farNorth + this.farRight[x]] >>> 8)],
+      );
+      const nw = Math.max(
+        a[center + (h[rows.north + this.left[x]] >>> 8)],
+        b[center + (h[rows.farNorth + this.farLeft[x]] >>> 8)],
+      );
+      const se = Math.max(
+        a[center + (h[rows.south + this.right[x]] >>> 8)],
+        b[center + (h[rows.farSouth + this.farRight[x]] >>> 8)],
+      );
+      const sw = Math.max(
+        a[center + (h[rows.south + this.left[x]] >>> 8)],
+        b[center + (h[rows.farSouth + this.farLeft[x]] >>> 8)],
+      );
+      return clampByte(255 * (1 - strength * (cardinal + ne + nw + se + sw) * 0.125));
+    }
+    return clampByte(255 * (1 - strength * cardinal * 0.25));
   }
 
   private writeNormal(
@@ -152,13 +226,27 @@ export class ReliefField {
   ) {
     const h = this.heights;
     const n = this.size;
-    const left = h[offsets.row + (x ? x - 1 : n - 1)];
-    const right = h[offsets.row + (x + 1 === n ? 0 : x + 1)];
+    const lx = x ? x - 1 : n - 1;
+    const rx = x + 1 === n ? 0 : x + 1;
+    const left = h[offsets.row + lx];
+    const right = h[offsets.row + rx];
     const up = h[offsets.previous + x];
     const down = h[offsets.next + x];
     // Image rows increase downwards. UV +V increases upwards (OpenGL tangent space).
-    const nx = (left - right) * scale;
-    const ny = (down - up) * scale;
+    let dx = left - right;
+    let dy = down - up;
+    if (this.formed) {
+      // Scharr central derivative. A grazing highlight should follow the same physical
+      // profile as it rotates through the tile's axes and diagonals.
+      const tl = h[offsets.previous + lx],
+        tr = h[offsets.previous + rx];
+      const bl = h[offsets.next + lx],
+        br = h[offsets.next + rx];
+      dx = (10 * dx + 3 * (tl - tr + bl - br)) / 16;
+      dy = (10 * dy + 3 * (bl - tl + br - tr)) / 16;
+    }
+    const nx = dx * scale;
+    const ny = dy * scale;
     const nz = 1 / Math.sqrt(1 + nx * nx + ny * ny);
     target[dst] = Math.round(127.5 + nx * nz * 127.5);
     target[dst + 1] = Math.round(127.5 + ny * nz * 127.5);

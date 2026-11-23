@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { StudioMaps } from '../TextureGenerator';
 import type { CompletedMaterial } from '../export/materialPackage';
-import { serializeGenerationRecipe, type GenerationRecipe } from '../recipes';
+import { type GenerationRecipe, serializeGenerationRecipe } from '../recipes';
+import type { StudioMaps } from '../TextureGenerator';
 import { bakeMaterial, releaseIdleWorker } from './bake';
 
 const DRAFT_SIZE = 512;
-const MAX_PREVIEW_SIZE = 1024;
-type View = { material: CompletedMaterial | null; preview: CompletedMaterial | null };
-const initialView: View = { material: null, preview: null };
-
 function makeMaterial(recipe: GenerationRecipe, blobs: StudioMaps<Blob>): CompletedMaterial {
   const pairs: [string, string][] = [];
   try {
@@ -25,11 +21,11 @@ function revoke(material: CompletedMaterial) {
 }
 
 export function useMaterialSession() {
-  const [view, setView] = useState<View>(initialView);
+  const [material, setMaterial] = useState<CompletedMaterial | null>(null);
   const [progress, setProgress] = useState<{ stage: string; fraction: number } | null>(null);
   const [error, setError] = useState('');
   const active = useRef<AbortController | null>(null);
-  const latest = useRef<View>(initialView);
+  const latest = useRef<CompletedMaterial | null>(null);
   const owned = useRef(new Set<CompletedMaterial>());
 
   const cancel = useCallback(() => {
@@ -44,56 +40,32 @@ export function useMaterialSession() {
     const { signal } = controller;
     active.current = controller;
     setError('');
-    const draft: GenerationRecipe = {
-      ...recipe,
-      params: { ...recipe.params, resolution: Math.min(DRAFT_SIZE, recipe.params.resolution) },
-    };
+    const target: GenerationRecipe =
+      mode === 'bake'
+        ? recipe
+        : {
+            ...recipe,
+            params: { ...recipe.params, resolution: Math.min(DRAFT_SIZE, recipe.params.resolution) },
+          };
     setProgress({ stage: mode === 'draft' ? 'Preparing preview' : 'Preparing bake', fraction: 0 });
-
-    const unpublished = new Set<CompletedMaterial>();
-    const publish = (material: CompletedMaterial, preview: CompletedMaterial) => {
-      unpublished.delete(material);
-      unpublished.delete(preview);
-      latest.current = { material, preview };
-      setView(latest.current);
-    };
-    const generate = async (target: GenerationRecipe) => {
-      const key = serializeGenerationRecipe(target);
-      for (const cached of [latest.current.material, latest.current.preview]) {
-        if (cached && serializeGenerationRecipe(cached.recipe) === key) return cached;
-      }
-      const maps = await bakeMaterial(target, signal, (fraction, stage) => {
-        if (!signal.aborted) setProgress({ fraction, stage });
-      });
-      signal.throwIfAborted();
-      const result = makeMaterial(target, maps);
-      owned.current.add(result);
-      unpublished.add(result);
-      return result;
-    };
 
     // Edits share a short debounce. A requested final bake can start immediately.
     const timer = window.setTimeout(
       async () => {
         try {
-          let preview: CompletedMaterial | null = null;
-          if (mode === 'draft' || recipe.params.resolution > MAX_PREVIEW_SIZE) {
-            preview = await generate(draft);
-            signal.throwIfAborted();
-            if (mode === 'draft') publish(preview, preview);
-          }
-          if (mode === 'bake') {
-            const material = await generate(recipe);
-            signal.throwIfAborted();
-            publish(material, preview ?? material);
-          }
+          const cached = latest.current;
+          if (cached && serializeGenerationRecipe(cached.recipe) === serializeGenerationRecipe(target)) return;
+          const maps = await bakeMaterial(target, signal, (fraction, stage) => {
+            if (!signal.aborted) setProgress({ fraction, stage });
+          });
+          signal.throwIfAborted();
+          const next = makeMaterial(target, maps);
+          owned.current.add(next);
+          latest.current = next;
+          setMaterial(next);
         } catch (cause) {
           if (!signal.aborted) setError(cause instanceof Error ? cause.message : 'Material generation failed.');
         } finally {
-          for (const entry of unpublished) {
-            owned.current.delete(entry);
-            revoke(entry);
-          }
           if (!signal.aborted) {
             active.current = null;
             setProgress(null);
@@ -106,14 +78,14 @@ export function useMaterialSession() {
   }, []);
 
   useLayoutEffect(() => {
-    if (latest.current !== view) return;
+    if (latest.current !== material) return;
     for (const entry of owned.current) {
-      if (entry !== view.material && entry !== view.preview) {
+      if (entry !== material) {
         revoke(entry);
         owned.current.delete(entry);
       }
     }
-  }, [view]);
+  }, [material]);
 
   useEffect(
     () => () => {
@@ -125,5 +97,5 @@ export function useMaterialSession() {
     [],
   );
 
-  return { ...view, render, cancel, progress, error };
+  return { material, render, cancel, progress, error };
 }
