@@ -14,6 +14,14 @@ Greebler is a procedural hard-surface material editor. Build repeating service p
 
 Drag a divider to resize either dock. With a divider focused, the arrow keys adjust its width and Home resets it. Dock widths and visibility survive reload. On narrow screens, the Library and Properties buttons open sheets. **Shift+Space** toggles focus mode, **Ctrl/⌘ K** finds materials, and **Ctrl/⌘ Enter** bakes. The keyboard button in the status bar lists the other commands.
 
+## Displacement
+
+Choose **Displacement** in the material library for a classic sci-fi height field. Broad gray terraces meet at stepped joints. Recessed service strips carry traces and sockets, and a few square towers rise above the plates. Change the main seed for a new tile or the component detail seed to vary the fittings within the same layout. [Download the 2048 px recipe](examples/displacement.json)
+
+The left image shows the repeating height tile. The raking light on the right shows how the steps and cuts read on a displaced mesh. Use the 16-bit **Height** PNG as linear, non-color data in a displacement shader.
+
+![Displacement height tile beside a shaded render of its relief](docs/displacement.webp)
+
 ## Hardware patterns
 
 ![Nine hardware presets, showing iris shutters, linear actuators, gusset trusses, heat exchangers, cable harnesses, honeycomb intakes, RF waveguides, cartridge racks and optical arrays](docs/hardware-patterns.webp)

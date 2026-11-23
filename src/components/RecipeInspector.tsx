@@ -19,6 +19,7 @@ import {
   createGenerationRecipe,
   DEFAULT_FINISH,
   type GenerationParams,
+  type GenerationStyle,
   type GenerationRecipe,
   generationParamsFromRecipe,
   serializeGenerationRecipe,
@@ -113,10 +114,11 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
           <select
             id="style-select"
             value={params.style}
-            onChange={(event) => edit('style', event.target.value === 'electrical' ? 'electrical' : 'tech')}
+            onChange={(event) => edit('style', event.target.value as GenerationStyle)}
           >
             <option value="tech">Tech Detail</option>
             <option value="electrical">Electrical</option>
+            {studio && <option value="displacement">Displacement</option>}
           </select>
         </div>
         {studio && (

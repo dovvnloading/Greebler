@@ -40,6 +40,14 @@ function compile(mark: StudioLayout[number], scale: number): Feature {
     top = src.y * scale + oy;
     right = left + src.w * scale;
     bottom = top + src.h * scale;
+    if (src.edge === 'square') {
+      // Assign each pixel center to one terrain cell, even when the wall falls inside a pixel.
+      // Independently antialiasing adjoining beds would expose the backing along their common edge.
+      left = Math.ceil(left - 0.5);
+      right = Math.ceil(right - 0.5);
+      top = Math.ceil(top - 0.5);
+      bottom = Math.ceil(bottom - 0.5);
+    }
     // A full-period trench or rail has no end wall, even when its source origin lies
     // in the middle of the texture after the assembly is translated.
     if (src.w === TILE) {
@@ -101,7 +109,8 @@ function compile(mark: StudioLayout[number], scale: number): Feature {
   }
   // The roundover runs inside the footprint; small fasteners keep a flat bearing face.
   const shortAxis = shape.kind === 'path' && shape.radius > 0 ? 2 * shape.radius : Math.min(right - left, bottom - top);
-  const bevel = Math.min(3.2 * scale, 0.2 * shortAxis);
+  // Abutting terrain cells meet at a shared wall. Beveling each to the backing would cut a false joint.
+  const bevel = src.kind === 'rect' && src.edge === 'square' ? 0 : Math.min(3.2 * scale, 0.2 * shortAxis);
   return {
     shape,
     bevel,

@@ -7,6 +7,7 @@ import filter from '../../examples/filter.json';
 import waveguide from '../../examples/waveguide.json';
 import cassette from '../../examples/cassette.json';
 import sensor from '../../examples/sensor.json';
+import displacement from '../../examples/displacement.json';
 import serviceDeck from '../../examples/service-deck.json';
 import relayBoard from '../../examples/relay-board.json';
 import {
@@ -38,6 +39,12 @@ export const factoryMaterials: LibraryMaterial[] = [
     name: 'Relay board',
     recipe: parseGenerationRecipe(JSON.stringify(relayBoard)),
     image: new URL('../assets/materials/relay-board.webp', import.meta.url).href,
+  },
+  {
+    id: 'displacement',
+    name: 'Displacement',
+    recipe: parseGenerationRecipe(JSON.stringify(displacement)),
+    image: new URL('../assets/materials/displacement.webp', import.meta.url).href,
   },
   ...hardwarePatterns.map((pattern) => ({
     id: pattern,

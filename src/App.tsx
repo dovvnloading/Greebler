@@ -15,6 +15,7 @@ import {
 import {
   createGenerationRecipe,
   getGenerationRecipeId,
+  styleNames,
   parseGenerationRecipe,
   serializeGenerationRecipe,
   type GenerationRecipe,
@@ -88,7 +89,7 @@ export default function App() {
       (item) => serializeGenerationRecipe(item.recipe) === serializeGenerationRecipe(current),
     );
     const source = readSource() ?? {
-      name: factory?.name ?? (current.params.style === 'tech' ? 'Tech material' : 'Electrical material'),
+      name: factory?.name ?? `${styleNames[current.params.style]} material`,
       recipeId: getGenerationRecipeId(current),
       assetId: factory?.id,
     };
@@ -104,7 +105,7 @@ export default function App() {
   const importRequest = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const id = getGenerationRecipeId(recipe);
-  const documentName = source?.name ?? (recipe.params.style === 'tech' ? 'Tech material' : 'Electrical material');
+  const documentName = source?.name ?? `${styleNames[recipe.params.style]} material`;
   const modified = Boolean(source && source.recipeId !== id);
   useEffect(() => {
     document.title = `${documentName}${modified ? ' *' : ''} · Greebler`;
