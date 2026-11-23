@@ -13,7 +13,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function sampleSurface(canvas: Locator) {
-  return canvas.evaluate((element: HTMLCanvasElement) => {
+  return canvas.evaluate(async (element: HTMLCanvasElement) => {
+    // Input events can resolve before the renderer has drawn its invalidated frame.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     const sample = document.createElement('canvas');
     sample.width = 96;
     sample.height = 48;
@@ -80,6 +82,34 @@ test('light angle and raking light change the material at a fixed camera angle',
   expect(errors).toEqual([]);
 });
 
+test('restores the lit material after GPU context loss and responds to a new light angle', async ({ page }) => {
+  const { canvas, errors, base } = await loadPlate(page);
+  const states = await canvas.evaluate(async (element: HTMLCanvasElement) => {
+    const gl = element.getContext('webgl2');
+    const recovery = gl?.getExtension('WEBGL_lose_context');
+    if (!gl || !recovery) throw new Error('Chromium context loss extension unavailable.');
+    const next = (event: string) =>
+      new Promise<void>((resolve) => element.addEventListener(event, () => resolve(), { once: true }));
+    const lost = next('webglcontextlost');
+    recovery.loseContext();
+    await lost;
+    const duringLoss = gl.isContextLost();
+    // The WebGL loss event must finish dispatching before restoration can be requested.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const restored = next('webglcontextrestored');
+    recovery.restoreContext();
+    await restored;
+    return { duringLoss, afterRestore: gl.isContextLost() };
+  });
+  expect(states).toEqual({ duringLoss: true, afterRestore: false });
+  await expect.poll(async () => differingPixels(base, await sampleSurface(canvas), 4)).toBeLessThan(0.02);
+  const angle = page.getByRole('slider', { name: 'Light angle', exact: true });
+  await angle.fill('110');
+  await expect.poll(async () => differingPixels(base, await sampleSurface(canvas))).toBeGreaterThan(0.15);
+  expect(await canvas.evaluate((element: HTMLCanvasElement) => element.getContext('webgl2')?.getError())).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('clay and unlit height inspection render the displaced surface', async ({ page }) => {
   const { canvas, errors, base } = await loadPlate(page);
   const raking = page.getByRole('button', { name: 'Raking light', exact: true });
@@ -90,9 +120,6 @@ test('clay and unlit height inspection render the displaced surface', async ({ p
   await expect.poll(async () => neutralDetail(await sampleSurface(canvas))).toBe(true);
   const height = await sampleSurface(canvas);
   await raking.click();
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  );
   expect(differingPixels(height, await sampleSurface(canvas))).toBeLessThan(0.05);
   await page.getByRole('button', { name: 'Exaggerate relief (6×)', exact: true }).click();
   await expect.poll(async () => differingPixels(height, await sampleSurface(canvas), 3)).toBeGreaterThan(0.025);

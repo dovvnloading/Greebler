@@ -115,7 +115,7 @@ export function createReliefMaterial(textures: SwatchTextures, tileWidth: number
         vec2 metric = vec2(reliefRange * vRelief.y) / span;
         vec2 hitUv = intersectRelief(vMapUv, dx, dy, transpose(surfaceBasis) * normalize(vViewPosition), metric);
         vec3 swatchORM = textureGrad(roughnessMap, hitUv, dx, dy).rgb;
-        float hitHeight = field(hitUv, dx, dy);
+        float hitHeight = fastMotion && shadingMode != 2 ? vRelief.x : field(hitUv, dx, dy);
         diffuseColor.rgb *= shadingMode == 1 ? vec3(0.34) : textureGrad(map, hitUv, dx, dy).rgb;
       `,
         )

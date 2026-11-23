@@ -69,10 +69,10 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
   const { camera, gl, invalidate, size, viewport, setDpr } = useThree();
   const textures = useTextures(material, onError);
   const [orbiting, setOrbiting] = useState(false);
-  const [underLoad, setUnderLoad] = useState(false);
+  const [motionLevel, setMotionLevel] = useState(0);
   const motion = rotating || orbiting;
-  const reduced = motion && underLoad;
-  const timing = useRef({ previous: 0, slowFrames: 0 });
+  const reduced = motion && motionLevel > 0;
+  const timing = useRef({ previous: 0, slowFrames: 0, frames: 0 });
   const orbitTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const detail = Math.min(224, Math.max(64, textures?.size ?? 192));
   const geometry = useMemo(() => createSwatchGeometry(shape, detail), [shape, detail]);
@@ -111,13 +111,14 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
     invalidate();
   }, [shader, shading, gain, reduced, movingDetail, detail, gridScale, invalidate]);
   useLayoutEffect(() => {
-    timing.current = { previous: 0, slowFrames: 0 };
-    if (!motion) setUnderLoad(false);
+    timing.current = { previous: 0, slowFrames: 0, frames: 0 };
+    if (!motion) setMotionLevel(0);
   }, [motion]);
   useLayoutEffect(() => {
     const nativeDpr = viewport.initialDpr;
-    setDpr(reduced ? Math.min(1, nativeDpr * 0.65) : nativeDpr);
-  }, [reduced, viewport.initialDpr, setDpr]);
+    const scale = motionLevel === 2 ? 0.45 : 0.65;
+    setDpr(reduced ? Math.min(1, nativeDpr * scale) : nativeDpr);
+  }, [reduced, motionLevel, viewport.initialDpr, setDpr]);
   useEffect(() => () => clearTimeout(orbitTimer.current), []);
   // React commits change casters, material or lights. OrbitControls moves the
   // camera directly between commits and can reuse the existing depth pass.
@@ -159,12 +160,21 @@ function Scene({ material, shape, shading, rotating, raking, azimuth, gain, fram
     invalidate();
   }, [camera, shape, geometry, size.width, size.height, frame, invalidate]);
   useFrame((_, dt) => {
-    if (motion && !underLoad) {
+    if (motion && motionLevel < 2 && (rotating || timing.current.frames < 8)) {
       const now = performance.now();
       const sample = timing.current;
-      sample.slowFrames = sample.previous && now - sample.previous > 38 ? sample.slowFrames + 1 : 0;
+      const limit = motionLevel === 0 ? 38 : 72;
+      sample.slowFrames = sample.previous && now - sample.previous > limit ? sample.slowFrames + 1 : 0;
       sample.previous = now;
-      if (sample.slowFrames >= 2) setUnderLoad(true);
+      sample.frames++;
+      // Sample a short continuous burst during a drag. Gaps between pointer
+      // events would otherwise be counted as GPU time on a demand-rendered canvas.
+      if (!rotating) invalidate();
+      if (sample.slowFrames >= (motionLevel === 0 ? 2 : 4)) {
+        sample.frames = sample.slowFrames = 0;
+        sample.previous = 0;
+        setMotionLevel(motionLevel + 1);
+      }
     }
     if (rotating && controls.current) {
       // Orbit the specimen in its fixed studio. This also keeps its contact shadow

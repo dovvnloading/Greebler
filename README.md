@@ -67,6 +67,8 @@ Two consecutive 8192² service-deck bakes used fresh headless Chromium processes
 
 The formed bake completed 2,977 callbacks on a 16 ms page timer. A separate cancellation during 8K PNG encoding settled in 1.6 ms and the next 256 px bake completed in 922 ms. These measurements cover baking, including PNG encoding. Viewport frame times depend on the graphics hardware, area and device pixel ratio. During slow orbits the viewer reduces mesh and shading cost, then restores full quality when the camera stops.
 
+In a 1440 × 1000 browser using the SwiftShader software renderer, the formed service deck took a median 111 ms per moving frame across 16 synchronized samples. The viewer used a 464 × 242 drawing buffer during sustained slow motion and 1032 × 538 at rest. The previous default took 122 ms at 998 × 404 in the same harness. These short software runs cover the interactive quality fallback. They do not establish hardware GPU frame rates.
+
 The following baseline uses the original raster profile, the default Tech material and seed 12345. Linux headless Chromium reported nine hardware threads. A 16 ms timer on the browser page measured how long UI callbacks went unserviced. The 4K comparison used the production editors with their previews loaded. Bake times include PNG encoding.
 
 | Run | PNGs | Bake time | Longest gap in the UI timer |

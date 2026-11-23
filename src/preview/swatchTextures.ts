@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { CompletedMaterial } from '../export/materialMaps';
 import { getGenerationRecipeId } from '../recipes';
-import { MAX_SWATCH_SIZE, type StudioHeight, unpackStudioHeight } from './heightTexture';
+import { MAX_SWATCH_SIZE, type StudioHeight, unpackStudioHeightAsync } from './heightTexture';
 
 export interface SwatchTextures {
   albedo: THREE.Texture;
@@ -59,21 +59,25 @@ async function readHeight(blob: Blob, signal: AbortSignal) {
     }
   }
   signal.throwIfAborted();
-  return unpackStudioHeight(new Uint8Array(await blob.arrayBuffer()));
+  return unpackStudioHeightAsync(new Uint8Array(await blob.arrayBuffer()), signal);
 }
 
 async function loadImage(blob: Blob, resize: number | undefined) {
   if (typeof createImageBitmap === 'function') {
-    const bitmap = await createImageBitmap(blob, {
-      imageOrientation: 'flipY',
-      colorSpaceConversion: 'none',
-      premultiplyAlpha: 'none',
-      ...(resize && { resizeWidth: resize, resizeHeight: resize, resizeQuality: 'high' as const }),
-    });
-    const texture = new THREE.Texture(bitmap);
-    texture.flipY = false;
-    texture.addEventListener('dispose', () => bitmap.close());
-    return texture;
+    try {
+      const bitmap = await createImageBitmap(blob, {
+        imageOrientation: 'flipY',
+        colorSpaceConversion: 'none',
+        premultiplyAlpha: 'none',
+        ...(resize && { resizeWidth: resize, resizeHeight: resize, resizeQuality: 'high' as const }),
+      });
+      const texture = new THREE.Texture(bitmap);
+      texture.flipY = false;
+      texture.addEventListener('dispose', () => bitmap.close());
+      return texture;
+    } catch {
+      // Some browsers expose the API but reject explicit orientation or resize options.
+    }
   }
   const url = URL.createObjectURL(blob);
   try {

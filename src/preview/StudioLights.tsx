@@ -39,17 +39,35 @@ export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azi
   const key = raking ? new THREE.Vector3(-4.8, 1.35, 0.8) : new THREE.Vector3(-3.6, 4.6, -1.8);
   key.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
   useLayoutEffect(() => {
-    const { room, dispose } = reflectionStudio();
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const env = pmrem.fromScene(room, 0.015, 0.1, 30, { size: 64 });
     const previous = scene.environment;
-    scene.environment = env.texture;
-    pmrem.dispose();
-    dispose();
-    invalidate();
-    return () => {
+    let environment: THREE.WebGLRenderTarget | undefined;
+    const release = () => {
       scene.environment = previous;
-      env.dispose();
+      environment?.dispose();
+      environment = undefined;
+    };
+    const rebuild = () => {
+      const { room, dispose } = reflectionStudio();
+      const pmrem = new THREE.PMREMGenerator(gl);
+      try {
+        const next = pmrem.fromScene(room, 0.015, 0.1, 30, { size: 64 });
+        scene.environment = next.texture;
+        environment = next;
+        gl.shadowMap.needsUpdate = true;
+        invalidate();
+      } finally {
+        pmrem.dispose();
+        dispose();
+      }
+    };
+    rebuild();
+    // GPU-only reflection and shadow targets lose their contents on mobile suspension.
+    gl.domElement.addEventListener('webglcontextlost', release);
+    gl.domElement.addEventListener('webglcontextrestored', rebuild);
+    return () => {
+      gl.domElement.removeEventListener('webglcontextlost', release);
+      gl.domElement.removeEventListener('webglcontextrestored', rebuild);
+      release();
     };
   }, [gl, scene, invalidate]);
   useLayoutEffect(() => {
@@ -92,7 +110,7 @@ export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azi
       <hemisphereLight args={['#dce5f0', '#636365', raking ? 0.27 : 0.48]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, floorY, 0]} receiveShadow>
         <planeGeometry args={[140, 140]} />
-        <meshStandardMaterial color="#272e37" metalness={0.08} roughness={0.87} />
+        <meshLambertMaterial color="#343c45" emissive="#12161b" />
       </mesh>
     </>
   );

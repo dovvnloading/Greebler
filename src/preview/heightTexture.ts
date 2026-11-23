@@ -76,7 +76,7 @@ function heightPyramid(sourceSize: number, size: number) {
 }
 
 /** Decode the noninterlaced 16-bit grayscale PNG produced by the studio encoder. */
-export function unpackStudioHeight(bytes: Uint8Array, maxSize = MAX_SWATCH_SIZE): StudioHeight {
+function* decodeRows(bytes: Uint8Array, maxSize: number): Generator<void, StudioHeight> {
   if (bytes.byteLength < 33) throw new Error('Incomplete studio height header.');
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const sourceSize = header.getUint32(16);
@@ -105,27 +105,55 @@ export function unpackStudioHeight(bytes: Uint8Array, maxSize = MAX_SWATCH_SIZE)
   const samples = row.subarray(1);
   let filled = 0,
     y = 0;
+  const empty = new Uint8Array();
+  let inflated: Uint8Array = empty;
   const inflater = new Unzlib((data) => {
-    for (let cursor = 0; cursor < data.length; ) {
-      const count = Math.min(row.length - filled, data.length - cursor);
-      row.set(data.subarray(cursor, cursor + count), filled);
-      filled += count;
-      cursor += count;
-      if (filled === row.length) {
-        if (y >= sourceSize || row[0] !== 1) throw new Error('Unexpected studio height scanline.');
-        pyramid.writeRow(samples, y++);
-        filled = 0;
-      }
-    }
+    inflated = data;
   });
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
-    // A highly compressible 8K tile can otherwise inflate an entire frame in one IDAT.
-    for (let j = 0; j < chunk.length; j += 4096) {
-      const end = Math.min(j + 4096, chunk.length);
+    // A flat 8K map may fit in a single IDAT. Bound the inflater's transient output too.
+    for (let j = 0; j < chunk.length; j += 2048) {
+      const end = Math.min(j + 2048, chunk.length);
+      inflated = empty;
       inflater.push(chunk.subarray(j, end), i + 1 === chunks.length && end === chunk.length);
+      for (let cursor = 0; cursor < inflated.length; ) {
+        const count = Math.min(row.length - filled, inflated.length - cursor);
+        row.set(inflated.subarray(cursor, cursor + count), filled);
+        filled += count;
+        cursor += count;
+        if (filled === row.length) {
+          if (y >= sourceSize || row[0] !== 1) throw new Error('Unexpected studio height scanline.');
+          pyramid.writeRow(samples, y++);
+          filled = 0;
+          yield;
+        }
+      }
     }
   }
   if (y !== sourceSize || filled) throw new Error('Incomplete studio height texture.');
   return { pixels: pyramid.levels[0].data, width: size, height: size, mipmaps: pyramid.levels };
+}
+
+export function unpackStudioHeight(bytes: Uint8Array, maxSize = MAX_SWATCH_SIZE): StudioHeight {
+  const rows = decodeRows(bytes, maxSize);
+  while (true) {
+    const result = rows.next();
+    if (result.done) return result.value;
+  }
+}
+
+/** Embedded browsers can disable workers. Leave the UI a chance to paint and cancel between scanlines. */
+export async function unpackStudioHeightAsync(bytes: Uint8Array, signal: AbortSignal): Promise<StudioHeight> {
+  const rows = decodeRows(bytes, MAX_SWATCH_SIZE);
+  let deadline = performance.now() + 8;
+  while (true) {
+    signal.throwIfAborted();
+    const result = rows.next();
+    if (result.done) return result.value;
+    if (performance.now() >= deadline) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      deadline = performance.now() + 8;
+    }
+  }
 }

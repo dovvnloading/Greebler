@@ -1,7 +1,20 @@
 import { expect, test } from '@playwright/test';
 
-for (const sourceSize of [17, 2051]) {
-  test(`uploads aligned material channels and exact height mips from a ${sourceSize}px source`, async ({ page }) => {
+for (const [sourceSize, useDomFallback] of [
+  [17, false],
+  [2051, false],
+  [2051, true],
+] as const) {
+  const decoder = useDomFallback ? 'canvas fallback' : 'bitmap decoder';
+  test(`uploads aligned material channels and exact height mips from a ${sourceSize}px source via the ${decoder}`, async ({
+    page,
+  }) => {
+    if (useDomFallback)
+      await page.addInitScript(() => {
+        window.createImageBitmap = async () => {
+          throw new TypeError('Bitmap options unsupported');
+        };
+      });
     await page.route('**/height-mip-test', (route) =>
       route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Height texture</title>' }),
     );

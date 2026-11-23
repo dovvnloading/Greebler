@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { StripPng } from '../engine/png';
-import { unpackStudioHeight } from './heightTexture';
+import { unpackStudioHeight, unpackStudioHeightAsync } from './heightTexture';
 
 async function roundTrip(values: number[], size: number, maxSize?: number) {
   const bytes = new Uint8Array(values.length * 2);
@@ -20,6 +20,22 @@ describe('studio height texture', () => {
     expect(field.mipmaps[0].data).toBe(field.pixels);
     // The mean is 0x0391. Filtering the high and low bytes independently gives 0x0311 or 0x0411.
     expect([...field.mipmaps[1].data]).toEqual([0x03, 0x91]);
+  });
+
+  it('yields a large fallback decode to cancellation and produces identical mips on retry', async () => {
+    const n = 1024,
+      png = new StripPng(n, n, 'gray16');
+    await png.write(new Uint8Array(n * n * 2).fill(67), n);
+    const bytes = new Uint8Array(await png.blob().arrayBuffer());
+    const controller = new AbortController();
+    const reason = new Error('changed recipe');
+    setTimeout(() => controller.abort(reason), 0);
+    await expect(unpackStudioHeightAsync(bytes, controller.signal)).rejects.toBe(reason);
+    const expected = unpackStudioHeight(bytes);
+    const actual = await unpackStudioHeightAsync(bytes, new AbortController().signal);
+    expect(actual.mipmaps.map((m, i) => Buffer.compare(m.data, expected.mipmaps[i].data))).toEqual(
+      expected.mipmaps.map(() => 0),
+    );
   });
 
   it.each([
