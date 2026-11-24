@@ -455,6 +455,12 @@ export function Viewport3D({
     if (!hasContext) onUnavailable?.();
   }, [active, onUnavailable]);
   if (!active && (!keepWarm || available !== true || resident.current !== material.recipe)) return null;
+  function handleUnavailable() {
+    capture.current = null;
+    setCaptureReady(false);
+    setAvailable(false);
+    onUnavailable?.();
+  }
   async function saveStill() {
     if (!capture.current || saving) return;
     setSaving(true);
@@ -485,7 +491,7 @@ export function Viewport3D({
       <div className="mw-scene-stage">
         {available === false && unavailable}
         {available && (
-          <ErrorBoundary fallback={unavailable}>
+          <ErrorBoundary fallback={unavailable} onError={handleUnavailable}>
             <Canvas
               camera={{ position: [2, 4, 4], fov: 33, near: 0.04, far: 90 }}
               dpr={[1, 1.75]}

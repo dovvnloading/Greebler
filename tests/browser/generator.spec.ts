@@ -277,3 +277,36 @@ test('preserves art direction across preset edits, undo, redo and saved recipes'
   await expect(page.locator('#detailSeed')).toHaveValue(variation);
   await expect(page.locator('#style-select')).toHaveValue('electrical');
 });
+
+test('falls back to texture inspection if the real renderer fails after the WebGL probe', async ({ page }) => {
+  await page.addInitScript(() => {
+    let requests = 0;
+    HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.getContext, {
+      apply(target, canvas, args) {
+        if (args[0] === 'webgl2' || args[0] === 'webgl' || args[0] === 'experimental-webgl') {
+          requests++;
+          if (requests > 1) return null;
+          const context = Reflect.apply(target, canvas, args);
+          if (context) document.documentElement.dataset.webglProbePassed = 'true';
+          return context;
+        }
+        return Reflect.apply(target, canvas, args);
+      },
+    });
+  });
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-webgl-probe-passed', 'true');
+  await expect(page.getByRole('button', { name: '3D view', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Split view', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '2D view', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('status').filter({ hasText: 'Showing texture maps' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'albedo map', exact: true })).toHaveJSProperty('naturalWidth', 512);
+  await page.getByRole('button', { name: 'Height', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'height map', exact: true })).toHaveJSProperty('naturalWidth', 512);
+  await page.getByRole('button', { name: 'Export maps', exact: true }).click();
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Height PNG', exact: true }).click();
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toBe('greeble_height.png');
+  expect(await file.failure()).toBeNull();
+});
