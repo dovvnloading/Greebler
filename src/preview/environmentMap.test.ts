@@ -52,9 +52,7 @@ it('rejects incomplete pixels, non-panoramic dimensions and out-of-budget dimens
 it('decodes legacy interleaved runs in source row order', () => {
   const w = 64;
   const h = 32;
-  const payload = Uint8Array.from(
-    Array.from({ length: h }, (_, y) => [128, 64, y, 130, 1, 1, 1, 63]).flat(),
-  );
+  const payload = Uint8Array.from(Array.from({ length: h }, (_, y) => [128, 64, y, 130, 1, 1, 1, 63]).flat());
   const map = decodeEnvironment(panorama(w, h, payload), 'legacy.hdr');
   for (const y of [0, 17, 31]) {
     for (const x of [0, 1, 63]) {
