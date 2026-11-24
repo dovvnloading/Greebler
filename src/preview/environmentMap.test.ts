@@ -48,3 +48,52 @@ it('rejects incomplete pixels, non-panoramic dimensions and out-of-budget dimens
     expect(() => decodeEnvironment(panorama(w, h, new Uint8Array()), 'invalid.hdr')).toThrow(error);
   }
 });
+
+it('decodes legacy interleaved runs in source row order', () => {
+  const w = 64;
+  const h = 32;
+  const payload = Uint8Array.from(
+    Array.from({ length: h }, (_, y) => [128, 64, y, 130, 1, 1, 1, 63]).flat(),
+  );
+  const map = decodeEnvironment(panorama(w, h, payload), 'legacy.hdr');
+  for (const y of [0, 17, 31]) {
+    for (const x of [0, 1, 63]) {
+      const start = (y * w + x) * 4;
+      expect(Array.from(map.pixels.slice(start, start + 4), DataUtils.fromHalfFloat)).toEqual([2, 1, y / 64, 1]);
+    }
+  }
+});
+
+it('decodes multi-byte legacy repeat counts, including a zero low byte', () => {
+  const w = 512;
+  const h = 256;
+  const row = [128, 64, 32, 130, 1, 1, 1, 0, 1, 1, 1, 1, 64, 128, 32, 130, 1, 1, 1, 254];
+  const payload = Uint8Array.from(Array.from({ length: h }, () => row).flat());
+  const map = decodeEnvironment(panorama(w, h, payload), 'long-run.hdr');
+  const pixel = (x: number, y: number) =>
+    Array.from(map.pixels.slice((y * w + x) * 4, (y * w + x) * 4 + 4), DataUtils.fromHalfFloat);
+  expect(pixel(256, 0)).toEqual([2, 1, 0.5, 1]);
+  expect(pixel(257, 0)).toEqual([1, 2, 0.5, 1]);
+  expect(pixel(511, 255)).toEqual([1, 2, 0.5, 1]);
+});
+
+it('recognizes legacy runs even if the encoded byte length equals a raw panorama', () => {
+  const w = 64;
+  const h = 32;
+  const pair = [128, 64, 32, 130, 1, 1, 1, 1];
+  const payload = Uint8Array.from(Array.from({ length: (w * h) / 2 }, () => pair).flat());
+  const map = decodeEnvironment(panorama(w, h, payload), 'one-repeat.hdr');
+  expect(Array.from(map.pixels.slice(4, 8), DataUtils.fromHalfFloat)).toEqual([2, 1, 0.5, 1]);
+});
+
+it('rejects malformed legacy scanlines rather than copying outside the output row', () => {
+  const rows = [
+    [1, 1, 1, 63],
+    [128, 64, 32, 130, 1, 1, 1, 64],
+    [128, 64, 32, 130, 1, 1, 1],
+    [128, 64, 32, 130, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0],
+  ];
+  for (const row of rows) {
+    expect(() => decodeEnvironment(panorama(64, 32, Uint8Array.from(row)), 'invalid.hdr')).toThrow(/scanline/);
+  }
+});
