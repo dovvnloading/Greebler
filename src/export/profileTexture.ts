@@ -1,8 +1,6 @@
 import { Unzlib } from 'fflate';
 import { StripPng } from '../engine/png.ts';
-import type { ExportTarget } from './materialMaps.ts';
-
-type EngineTarget = Exclude<ExportTarget, 'gltf'>;
+import type { ConvertedTextureTarget } from './materialMaps.ts';
 
 /** Extract the original zlib stream without copying its compressed payload. */
 async function imageData(source: Blob, size: number, signal?: AbortSignal) {
@@ -65,7 +63,7 @@ function unfilter(row: Uint8Array, previous: Uint8Array, filter: number) {
   }
 }
 
-function convertRow(row: Uint8Array, band: Uint8Array, offset: number, target: EngineTarget) {
+function convertRow(row: Uint8Array, band: Uint8Array, offset: number, target: ConvertedTextureTarget) {
   if (target === 'unreal') {
     band.set(row, offset);
     for (let i = 1; i < row.length; i += 3) band[offset + i] = 255 - row[i];
@@ -96,7 +94,12 @@ function inflater() {
 }
 
 /** Convert straight channel values. Canvas readback can destroy mask RGB at low alpha. */
-export async function buildProfileTexture(source: Blob, size: number, target: EngineTarget, signal?: AbortSignal) {
+export async function buildProfileTexture(
+  source: Blob,
+  size: number,
+  target: ConvertedTextureTarget,
+  signal?: AbortSignal,
+) {
   signal?.throwIfAborted();
   if (!Number.isInteger(size) || size < 1 || size > 8192) throw new Error('Unsupported export dimensions.');
   const compressed = await imageData(source, size, signal);

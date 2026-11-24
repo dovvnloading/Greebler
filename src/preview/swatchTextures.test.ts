@@ -26,6 +26,7 @@ it('retains decoded height and adaptive mesh identity across optical edits while
       palette: ['#121c20'],
       normalStrength: 0.5,
       aoStrength: 0.25,
+      cavityDust: 0.8,
       roughness: 0.2,
       metalness: 0.9,
       specularIntensity: 0.45,

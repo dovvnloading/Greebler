@@ -387,6 +387,16 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
             percent
             onChange={(v) => edit('wear', v)}
           />
+          <SliderControl
+            id="cavity-dust"
+            label="Cavity dust"
+            value={params.cavityDust ?? 0}
+            min={0}
+            max={1}
+            step={0.05}
+            percent
+            onChange={(v) => edit('cavityDust', v)}
+          />
         </Section>
       )}
     </div>

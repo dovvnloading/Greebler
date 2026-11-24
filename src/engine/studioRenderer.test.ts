@@ -5,6 +5,35 @@ import { generationParamsFromRecipe, parseGenerationRecipe } from '../recipes';
 import { mapNames, type PreviewBake, revisePreview } from './studioRenderer';
 import { ReliefField } from './surfaceBake';
 
+it('layers dielectric dust over authored metal and packs the same finish in ORM', async () => {
+  const params = {
+    ...generationParamsFromRecipe(parseGenerationRecipe(JSON.stringify(example))),
+    resolution: 2,
+    roughness: 0,
+    metalness: 1,
+  };
+  const source = {
+    field: new ReliefField(new Uint16Array(4), 2),
+    albedo: new Uint8Array(12),
+    rough: new Uint8Array(4),
+    metal: new Uint8Array(4),
+    ao: Uint8Array.of(10, 60, 120, 255),
+    dustCoverage: Uint8Array.of(255, 128, 0, 0),
+  };
+  const maps = Object.fromEntries(mapNames.map((name) => [name, new Blob()])) as PreviewBake['maps'];
+  const dusty = await revisePreview({ key: 'pockets', params, source, maps }, { ...params, cavityDust: 1 });
+  const pixels = async (name: 'albedo' | 'roughness' | 'metalness' | 'orm', channels: 1 | 3) =>
+    Array.from(readStudioPixels(new Uint8Array(await dusty.maps[name].arrayBuffer()), channels));
+  expect(await pixels('roughness', 1)).toEqual([239, 120, 0, 0]);
+  expect(await pixels('metalness', 1)).toEqual([0, 127, 255, 255]);
+  expect(await pixels('orm', 3)).toEqual([10, 239, 0, 60, 120, 127, 120, 0, 255, 255, 0, 255]);
+  const color = await pixels('albedo', 3);
+  expect(color.slice(0, 3)).toEqual([151, 132, 107]);
+  expect(color[3]).toBeGreaterThan(100); // A half-covered black substrate mixes in linear light.
+  expect(color.slice(6)).toEqual([0, 0, 0, 0, 0, 0]);
+  for (const key of ['height', 'normal', 'ao'] as const) expect(dusty.maps[key]).toBe(maps[key]);
+});
+
 it('bakes the same authored PBR channels separately and in ORM and restores the original finish', async () => {
   const params = {
     ...generationParamsFromRecipe(parseGenerationRecipe(JSON.stringify(example))),
@@ -14,6 +43,7 @@ it('bakes the same authored PBR channels separately and in ORM and restores the 
   };
   const source = {
     field: new ReliefField(new Uint16Array(4), 2),
+    albedo: new Uint8Array(4 * 3),
     rough: Uint8Array.of(0, 40, 160, 255),
     metal: Uint8Array.of(0, 5, 100, 230),
     ao: Uint8Array.of(20, 105, 180, 255),

@@ -266,3 +266,59 @@ test('dielectric specular strength changes the lit Displacement finish at a fixe
   await expect.poll(async () => differingPixels(lit, await sampleSurface(canvas), 4)).toBeLessThan(0.03);
   expect(errors).toEqual([]);
 });
+
+test('lights the same bake from a local HDR, changes exposure, saves a still and restores the studio', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const { canvas, errors } = await loadPlate(page);
+  await page.getByRole('button', { name: 'Frame material', exact: true }).click();
+  const base = await sampleSurface(canvas);
+  const recipeId = await canvas.getAttribute('data-material-id');
+  if (!recipeId) throw new Error('Missing recipe ID on the rendered material.');
+  const toggle = page.getByLabel('Lighting environment', { exact: true });
+  await toggle.click();
+  const picker = page.getByLabel('HDR panorama');
+  const header = Buffer.from('#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 64 +X 128\n');
+  const pixels = Buffer.alloc(128 * 64 * 4);
+  for (let i = 0; i < pixels.length; i += 4) {
+    const x = (i / 4) % 128;
+    pixels.set(x < 64 ? [200, 64, 18, 130] : [24, 64, 235, 128], i);
+  }
+  await picker.setInputFiles({
+    name: 'split-light.hdr',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.concat([header, pixels]),
+  });
+  await expect(page.getByText('split-light.hdr', { exact: true })).toBeVisible();
+  await expect.poll(async () => differingPixels(base, await sampleSurface(canvas))).toBeGreaterThan(0.3);
+  const imported = await sampleSurface(canvas);
+
+  await picker.setInputFiles({ name: 'bad.hdr', mimeType: 'application/octet-stream', buffer: Buffer.from('invalid') });
+  await expect(page.getByRole('alert')).toContainText('Radiance RGBE');
+  expect(differingPixels(imported, await sampleSurface(canvas))).toBeLessThan(0.01);
+  await page.getByRole('slider', { name: /Exposure/ }).fill('1.5');
+  await expect.poll(async () => differingPixels(imported, await sampleSurface(canvas))).toBeGreaterThan(0.5);
+  await toggle.click();
+  await page.getByRole('slider', { name: 'Light angle', exact: true }).fill('110');
+  await page.getByRole('button', { name: 'Raking light', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save viewport render' }).click();
+  const shot = await download;
+  expect(shot.suggestedFilename()).toBe(`greebler-${recipeId}-plate.png`);
+  const file = await shot.path();
+  if (!file) throw new Error('Missing viewport render.');
+  const png = await readFile(file);
+  expect(Math.max(png.readUInt32BE(16), png.readUInt32BE(20))).toBe(2048);
+
+  await toggle.click();
+  await page.getByRole('button', { name: 'Reset studio' }).click();
+  await expect.poll(async () => differingPixels(base, await sampleSurface(canvas))).toBeLessThan(0.02);
+  await expect(page.getByRole('slider', { name: 'Light angle', exact: true })).toHaveValue('0');
+  await expect(page.getByRole('button', { name: 'Raking light', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await expect(canvas).toHaveAttribute('data-material-id', recipeId);
+  expect(errors).toEqual([]);
+});

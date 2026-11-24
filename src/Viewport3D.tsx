@@ -24,6 +24,8 @@ import { useAdaptiveMesh } from './preview/useAdaptiveMesh';
 import { createAdaptiveSwatchGeometry, createSwatchGeometry, type SwatchShape } from './preview/swatchGeometry';
 import { createReliefMaterial, type Shading } from './preview/reliefMaterial';
 import { loadSwatchTextures, swatchHeightKey, type SwatchTextures } from './preview/swatchTextures';
+import type { EnvironmentMap } from './preview/environmentMap';
+import { EnvironmentControls } from './components/EnvironmentControls';
 import { StudioLights } from './preview/StudioLights';
 
 const axes = ['x', 'y', 'z'] as const;
@@ -51,7 +53,10 @@ interface SceneProps {
   rotating: boolean;
   adaptive: boolean;
   onMeshStatus: (status: MeshStatus) => void;
+  onCaptureReady: (ready: boolean) => void;
   capture: RefObject<(() => Promise<Blob>) | null>;
+  environment: EnvironmentMap | null;
+  exposure: number;
   raking: boolean;
   azimuth: number;
   gain: number;
@@ -109,7 +114,10 @@ function Scene({
   rotating,
   adaptive,
   onMeshStatus,
+  onCaptureReady,
   capture,
+  environment,
+  exposure,
   raking,
   azimuth,
   gain,
@@ -154,13 +162,16 @@ function Scene({
     },
     [refined],
   );
+  const captureReady =
+    textures?.id === getGenerationRecipeId(material.recipe) && !reduced && (!adaptive || usingRefined);
   useLayoutEffect(() => {
-    if (!usingRefined) return;
+    onCaptureReady(captureReady);
+    if (!captureReady) return;
     capture.current = () => renderStill(gl, scene, camera);
     return () => {
       capture.current = null;
     };
-  }, [capture, usingRefined, camera, scene, gl]);
+  }, [capture, captureReady, onCaptureReady, camera, scene, gl]);
   const gridScale = shape === 'cube' ? 0.5 : shape === 'sphere' ? 0.75 : 1;
   const shader = useMemo(
     () => textures && createReliefMaterial(textures, geometry.tileWidth),
@@ -317,7 +328,7 @@ function Scene({
   const floor = geometry.floorY - (shape === 'plate' ? 0.002 : shape === 'plane' ? 0.045 : 0.012 + gain * 0.009);
   return (
     <>
-      <StudioLights raking={raking} azimuth={azimuth} floorY={floor} />
+      <StudioLights environmentMap={environment} exposure={exposure} raking={raking} azimuth={azimuth} floorY={floor} />
       <group dispose={null}>
         {visibleGeometry.backing && (
           <mesh geometry={visibleGeometry.backing} castShadow receiveShadow>
@@ -390,8 +401,11 @@ export function Viewport3D({
   const [adaptive, setAdaptive] = useState(false);
   const [meshStatus, setMeshStatus] = useState<MeshStatus | null>(null);
   const capture = useRef<(() => Promise<Blob>) | null>(null);
+  const [captureReady, setCaptureReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [environment, setEnvironment] = useState<EnvironmentMap | null>(null);
+  const [exposure, setExposure] = useState(0);
   const [raking, setRaking] = useState(false);
   const [azimuth, setAzimuth] = useState(0);
   const [enhanced, setEnhanced] = useState(false);
@@ -489,8 +503,11 @@ export function Viewport3D({
                 shading={shading}
                 adaptive={adaptive}
                 onMeshStatus={setMeshStatus}
+                onCaptureReady={setCaptureReady}
                 capture={capture}
                 rotating={active && rotating}
+                environment={environment}
+                exposure={exposure}
                 raking={raking}
                 azimuth={azimuth}
                 gain={enhanced ? 6 : 1}
@@ -538,6 +555,19 @@ export function Viewport3D({
                 </select>
                 <ChevronDown size={12} aria-hidden="true" />
               </label>
+              <EnvironmentControls
+                environment={environment}
+                onEnvironment={setEnvironment}
+                exposure={exposure}
+                onExposure={setExposure}
+                studioChanged={!!environment || exposure !== 0 || raking || azimuth !== 0}
+                resetStudio={() => {
+                  setEnvironment(null);
+                  setExposure(0);
+                  setAzimuth(0);
+                  setRaking(false);
+                }}
+              />
             </div>
             <fieldset className="mw-axis" ref={gizmo} aria-label="Axis views">
               {axes.map((key) => (
@@ -564,7 +594,7 @@ export function Viewport3D({
                 type="button"
                 aria-label="Save displacement render"
                 title="Save a 2048 px PNG of this view"
-                disabled={saving}
+                disabled={saving || !captureReady}
                 onClick={saveStill}
               >
                 <Download size={13} aria-hidden="true" />
@@ -573,9 +603,9 @@ export function Viewport3D({
             )}
           </div>
         )}
-        {error && (
+        {(error || (!adaptive && saveError)) && (
           <p role="alert" className="mw-render-error">
-            {error}
+            {error || saveError}
           </p>
         )}
       </div>
@@ -631,6 +661,17 @@ export function Viewport3D({
           <output aria-hidden="true">{azimuth}°</output>
         </label>
         <div className="mw-camera-actions">
+          {!adaptive && (
+            <button
+              type="button"
+              aria-label="Save viewport render"
+              title="Save a 2048 px PNG of this view"
+              disabled={!captureReady || saving}
+              onClick={saveStill}
+            >
+              <Download size={14} aria-hidden="true" />
+            </button>
+          )}
           <button
             type="button"
             aria-label="Rotate preview"

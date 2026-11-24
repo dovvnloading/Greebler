@@ -29,6 +29,7 @@ export function swatchHeightKey(recipe: GenerationRecipe) {
       palette: ['#000000'],
       normalStrength: 1,
       aoStrength: 1,
+      cavityDust: undefined,
       metalness: undefined,
       roughness: undefined,
       specularIntensity: undefined,

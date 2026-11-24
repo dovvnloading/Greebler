@@ -25,7 +25,7 @@ const { values, positionals } = parseArgs({
 async function main() {
   if (values.help || positionals.length === 0) {
     console.log(
-      'npm run bake -- [--out directory] [--target gltf|unreal|unity-hdrp] [--metrics] [--force] recipe.json [more-recipes.json ...]',
+      `npm run bake -- [--out directory] [--target ${exportTargets.map(({ key }) => key).join('|')}] [--metrics] [--force] recipe.json [more-recipes.json ...]`,
     );
     if (!values.help) process.exitCode = 1;
     return;

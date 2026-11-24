@@ -1,6 +1,7 @@
 import { useLayoutEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { EnvironmentMap } from './environmentMap';
 
 // A bounded, local HDR studio. Broad cards give metal and clear edges a continuous
 // reflection as the artist orbits. A darker negative-fill side keeps relief legible.
@@ -33,7 +34,19 @@ function reflectionStudio() {
   };
 }
 
-export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azimuth: number; floorY: number }) {
+export function StudioLights({
+  environmentMap,
+  exposure,
+  raking,
+  azimuth,
+  floorY,
+}: {
+  environmentMap: EnvironmentMap | null;
+  exposure: number;
+  raking: boolean;
+  azimuth: number;
+  floorY: number;
+}) {
   const { gl, scene, invalidate } = useThree();
   const angle = THREE.MathUtils.degToRad(azimuth);
   const key = raking ? new THREE.Vector3(-4.8, 1.35, 0.8) : new THREE.Vector3(-3.6, 4.6, -1.8);
@@ -47,17 +60,34 @@ export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azi
       environment = undefined;
     };
     const rebuild = () => {
-      const { room, dispose } = reflectionStudio();
       const pmrem = new THREE.PMREMGenerator(gl);
       try {
-        const next = pmrem.fromScene(room, 0.015, 0.1, 30, { size: 64 });
-        scene.environment = next.texture;
-        environment = next;
+        if (environmentMap) {
+          const { width, height, pixels } = environmentMap;
+          const source = new THREE.DataTexture(pixels, width, height, THREE.RGBAFormat, THREE.HalfFloatType);
+          source.mapping = THREE.EquirectangularReflectionMapping;
+          source.colorSpace = THREE.LinearSRGBColorSpace;
+          source.flipY = true;
+          source.magFilter = source.minFilter = THREE.LinearFilter;
+          source.needsUpdate = true;
+          try {
+            environment = pmrem.fromEquirectangular(source);
+          } finally {
+            source.dispose();
+          }
+        } else {
+          const { room, dispose } = reflectionStudio();
+          try {
+            environment = pmrem.fromScene(room, 0.015, 0.1, 30, { size: 64 });
+          } finally {
+            dispose();
+          }
+        }
+        scene.environment = environment.texture;
         gl.shadowMap.needsUpdate = true;
         invalidate();
       } finally {
         pmrem.dispose();
-        dispose();
       }
     };
     rebuild();
@@ -69,15 +99,23 @@ export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azi
       gl.domElement.removeEventListener('webglcontextrestored', rebuild);
       release();
     };
-  }, [gl, scene, invalidate]);
+  }, [gl, scene, environmentMap, invalidate]);
+  useLayoutEffect(() => {
+    const old = gl.toneMappingExposure;
+    gl.toneMappingExposure = 1.05 * 2 ** exposure;
+    invalidate();
+    return () => {
+      gl.toneMappingExposure = old;
+    };
+  }, [gl, exposure, invalidate]);
   useLayoutEffect(() => {
     const old = scene.environmentIntensity;
-    scene.environmentIntensity = raking ? 0.46 : 0.93;
+    scene.environmentIntensity = raking ? 0.46 : environmentMap ? 1 : 0.93;
     invalidate();
     return () => {
       scene.environmentIntensity = old;
     };
-  }, [scene, raking, invalidate]);
+  }, [scene, raking, environmentMap, invalidate]);
   useLayoutEffect(() => {
     const previous = scene.environmentRotation.y;
     scene.environmentRotation.y = angle;
@@ -93,6 +131,7 @@ export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azi
       <directionalLight
         position={key}
         color="#fff4df"
+        visible={!environmentMap || raking}
         intensity={raking ? 3.1 : 2.65}
         castShadow
         shadow-mapSize-width={1024}
@@ -107,7 +146,7 @@ export function StudioLights({ raking, azimuth, floorY }: { raking: boolean; azi
         shadow-bias={-0.00022}
         shadow-radius={2.3}
       />
-      <hemisphereLight args={['#dce5f0', '#636365', raking ? 0.27 : 0.48]} />
+      <hemisphereLight args={['#dce5f0', '#636365', environmentMap ? 0 : raking ? 0.27 : 0.48]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, floorY, 0]} receiveShadow>
         <planeGeometry args={[140, 140]} />
         <meshLambertMaterial color="#343c45" emissive="#12161b" />

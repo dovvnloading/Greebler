@@ -2,6 +2,7 @@ import mechanicalBay from '../../examples/mechanical-bay.json';
 import thermalPlant from '../../examples/thermal-plant.json';
 import avionicsRack from '../../examples/avionics-rack.json';
 import displacement from '../../examples/displacement.json';
+import salvageDeck from '../../examples/salvage-deck.json';
 import serviceDeck from '../../examples/service-deck.json';
 import relayBoard from '../../examples/relay-board.json';
 import { isGenerationRecipe, parseGenerationRecipe, type GenerationRecipe } from '../recipes';
@@ -19,6 +20,12 @@ export const factoryMaterials: LibraryMaterial[] = [
     name: 'Service deck',
     recipe: parseGenerationRecipe(JSON.stringify(serviceDeck)),
     image: new URL('../assets/materials/service-deck.webp', import.meta.url).href,
+  },
+  {
+    id: 'salvage-deck',
+    name: 'Salvage deck',
+    recipe: parseGenerationRecipe(JSON.stringify(salvageDeck)),
+    image: new URL('../assets/materials/salvage-deck.webp', import.meta.url).href,
   },
   {
     id: 'relay-board',

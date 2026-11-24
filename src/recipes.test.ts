@@ -111,6 +111,8 @@ it.each([
   { normalStrength: -1 },
   { aoStrength: 4 },
   { wear: 2 },
+  { cavityDust: -0.01 },
+  { cavityDust: 1.01 },
   { roughness: -0.01 },
   { metalness: 1.1 },
   { specularIntensity: '1' },
@@ -136,6 +138,18 @@ it('round-trips authored PBR values, including zero, without adding them to old 
       expect(convertRecipeVersion(edited, 1)).toEqual(createGenerationRecipe(params, 1));
     }
   }
+});
+
+it('preserves clean recipe IDs and round-trips an authored cavity dust amount', () => {
+  const params = createParams();
+  const clean = createGenerationRecipe(params);
+  expect(serializeGenerationRecipe(createGenerationRecipe({ ...params, cavityDust: 0 }))).toBe(
+    serializeGenerationRecipe(clean),
+  );
+  const dusty = createGenerationRecipe({ ...params, cavityDust: 0.75 });
+  expect(getGenerationRecipeId(dusty)).not.toBe(getGenerationRecipeId(clean));
+  expect(parseGenerationRecipe(serializeGenerationRecipe(dusty))).toEqual(dusty);
+  expect(convertRecipeVersion(dusty, 1)).toEqual(createGenerationRecipe(params, 1));
 });
 
 it('canonicalizes panel overrides by stable slot ID and removes empty edits from recipe identity', () => {

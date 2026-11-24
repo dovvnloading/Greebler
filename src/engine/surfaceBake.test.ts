@@ -79,6 +79,60 @@ describe('heightfield material bake', () => {
     expect(painted.metalness[size + 1]).toBe(9);
   });
 
+  it('deposits dust in tiled pockets and leaves exposed terraces and planar ramps clean', () => {
+    const size = 512;
+    const sampleRow = 165;
+    const heights = new Uint16Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        // A terrace on the last 32 columns shelters x = 0 across the wrap.
+        heights[y * size + x] = x >= size - 32 ? 52000 : 16000 + 40 * x;
+      }
+    }
+    const field = new ReliefField(heights, size, true);
+    const finish = new SurfaceFinish(size, 834);
+    const mask = field.dustCoverage(sampleRow, 3, finish);
+    expect(mask[0]).toBeGreaterThan(0);
+    expect(mask[2]).toBeGreaterThan(0);
+    expect(mask[20]).toBe(0);
+    expect(mask[200]).toBe(0);
+    expect(mask[size - 1]).toBe(0);
+    expect(mask.slice(size, size * 2)).toEqual(field.dustCoverage(sampleRow + 1, 1, finish));
+    expect(field.dustCoverage(sampleRow, 3, new SurfaceFinish(size, 834))).toEqual(mask);
+    expect(field.dustCoverage(sampleRow, 3, new SurfaceFinish(size, 835))).not.toEqual(mask);
+  });
+
+  it('matches periodic area sampling across sequential and restarted dust strips', () => {
+    const n = 31;
+    const h = Uint16Array.from({ length: n * n }, (_, i) => (Math.imul(i + 31, i + 637) * 17) >>> 0);
+    const field = new ReliefField(h, n);
+    const finish = new SurfaceFinish(n, 421);
+    const mean = (x: number, y: number, radius: number) => {
+      let sum = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) sum += h[((y + dy + n) % n) * n + ((x + dx + n) % n)];
+      }
+      return sum / (2 * radius + 1) ** 2;
+    };
+    for (const [top, rows] of [
+      [0, 3],
+      [3, 2],
+      [n - 2, 2],
+      [1, 1],
+    ]) {
+      const mask = field.dustCoverage(top, rows, finish);
+      const expected = Uint8Array.from(mask, (_, i) => {
+        const x = i % n,
+          y = top + Math.floor(i / n);
+        const center = h[y * n + x];
+        const inner = Math.max(0, Math.min(1, (mean(x, y, 1) - center - 200) / 5000));
+        const outer = Math.max(0, Math.min(1, (mean(x, y, 2) - center - 400) / 9000));
+        return Math.round(255 * (inner * 0.58 + outer * 0.42) * (0.25 + 0.75 * finish.coating(x, y)));
+      });
+      expect(mask).toEqual(expected);
+    }
+  });
+
   it('gives the same postprocessed channels regardless of strip boundaries', () => {
     const n = 31;
     const heights = Uint16Array.from({ length: n * n }, (_, p) => (p * 17) % 65536);

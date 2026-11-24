@@ -177,6 +177,7 @@ export class TextureGenerator {
             ...params,
             normalStrength: undefined,
             aoStrength: undefined,
+            cavityDust: undefined,
             roughness: undefined,
             metalness: undefined,
             specularIntensity: undefined,

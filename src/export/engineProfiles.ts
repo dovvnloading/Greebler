@@ -1,7 +1,7 @@
 import { RELIEF_RANGE_PER_TILE } from '../engine/relief.ts';
-import type { ExportTarget } from './materialMaps.ts';
+import type { ConvertedTextureTarget } from './materialMaps.ts';
 
-export function engineProfile(target: Exclude<ExportTarget, 'gltf'>, size: number, specularIntensity?: number) {
+export function engineProfile(target: ConvertedTextureTarget, size: number, specularIntensity?: number) {
   if (target === 'unreal') {
     return {
       source: 'normal' as const,
