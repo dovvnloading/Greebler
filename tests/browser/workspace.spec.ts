@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { type Download, expect, test } from '@playwright/test';
+import { type Download, expect, type Page, test } from '@playwright/test';
 import { getGenerationRecipeId, parseGenerationRecipe } from '../../src/recipes';
 
 async function readRecipe(download: Download) {
@@ -199,4 +199,111 @@ test('Displacement loads from the library, renders height and downloads its port
   await page.getByLabel('Renderer', { exact: true }).selectOption('1');
   await expect(style).toHaveValue('tech');
   await expect(style.locator('option[value="displacement"]')).toHaveCount(0);
+});
+
+async function delayRecipeReads(page: Page) {
+  await page.addInitScript(() => {
+    const read = File.prototype.text;
+    File.prototype.text = async function () {
+      if (!this.name.startsWith('delayed-')) return read.call(this);
+      const text = await read.call(this);
+      return new Promise<string>((resolve) => {
+        window.addEventListener('release-recipe-read', () => resolve(text), { once: true });
+        document.documentElement.dataset.recipeReadPending = 'true';
+      });
+    };
+  });
+}
+
+async function releaseRecipeRead(page: Page) {
+  await expect(page.locator('html')).toHaveAttribute('data-recipe-read-pending', 'true');
+  await page.evaluate(async () => {
+    delete document.documentElement.dataset.recipeReadPending;
+    window.dispatchEvent(new Event('release-recipe-read'));
+    // Drain the file-read promise and the React update before checking the document.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+}
+
+test('late recipe reads cannot replace newer edits or clear undo and redo history', async ({ page }) => {
+  await delayRecipeReads(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const seed = page.getByLabel('Seed', { exact: true });
+  const picker = page.getByLabel('Load recipe JSON', { exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  const file = await readFile(new URL('../../examples/displacement.json', import.meta.url));
+  const startImport = async () => {
+    await picker.setInputFiles({ name: 'delayed-displacement.json', mimeType: 'application/json', buffer: file });
+    await expect(page.locator('html')).toHaveAttribute('data-recipe-read-pending', 'true');
+  };
+  const editSeed = async (value: string) => {
+    await seed.fill(value);
+    await seed.press('Enter');
+    await expect(seed).toHaveValue(value);
+  };
+
+  await startImport();
+  await editSeed('7421');
+  await releaseRecipeRead(page);
+  await expect(seed).toHaveValue('7421');
+
+  await startImport();
+  await undo.click();
+  await expect(seed).toHaveValue('12345');
+  await releaseRecipeRead(page);
+  await expect(seed).toHaveValue('12345');
+  await expect(redo).toBeEnabled();
+
+  await startImport();
+  await page.keyboard.press('Control+Shift+z');
+  await expect(seed).toHaveValue('7421');
+  await releaseRecipeRead(page);
+  await expect(seed).toHaveValue('7421');
+
+  // A current import is not accidentally invalidated by its own dispatch.
+  await startImport();
+  await releaseRecipeRead(page);
+  await expect(seed).toHaveValue('3894');
+  await expect(page.getByLabel('Style', { exact: true })).toHaveValue('displacement');
+  await undo.click();
+  await expect(seed).toHaveValue('7421');
+});
+
+test('late import errors and results cannot replace a newly saved document or newer import', async ({ page }) => {
+  await delayRecipeReads(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const picker = page.getByLabel('Load recipe JSON', { exact: true });
+  const seed = page.getByLabel('Seed', { exact: true });
+  const file = await readFile(new URL('../../examples/displacement.json', import.meta.url));
+  const startImport = async (buffer: Buffer) => {
+    await picker.setInputFiles({ name: 'delayed-import.json', mimeType: 'application/json', buffer });
+    await expect(page.locator('html')).toHaveAttribute('data-recipe-read-pending', 'true');
+  };
+
+  await startImport(Buffer.from('{invalid'));
+  await seed.fill('7421');
+  await seed.press('Enter');
+  await releaseRecipeRead(page);
+  await expect(page.getByRole('alert').filter({ hasText: 'Invalid material recipe' })).toHaveCount(0);
+
+  await startImport(file);
+  await page.getByRole('button', { name: 'Save to library', exact: true }).click();
+  const save = page.getByRole('dialog', { name: 'Save to library', exact: true });
+  await save.getByLabel('Material name').fill('Kept document');
+  await save.getByLabel('Material name').press('Enter');
+  await expect(save).toBeHidden();
+  await releaseRecipeRead(page);
+  await expect(page.locator('.document-label')).toContainText('Kept document');
+  await expect(seed).toHaveValue('7421');
+
+  await startImport(file);
+  const relay = await readFile(new URL('../../examples/relay-board.json', import.meta.url));
+  await picker.setInputFiles({ name: 'relay-board.json', mimeType: 'application/json', buffer: relay });
+  await expect(page.locator('.document-label')).toContainText('relay-board');
+  await releaseRecipeRead(page);
+  await expect(page.locator('.document-label')).toContainText('relay-board');
+  await expect(page.getByLabel('Style', { exact: true })).toHaveValue('electrical');
 });

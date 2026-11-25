@@ -29,6 +29,19 @@ async function bakeInWorker(recipe: GenerationRecipe, signal: AbortSignal, progr
       abort = () => reject(signal.reason);
       signal.addEventListener('abort', abort, { once: true });
       signal.throwIfAborted();
+      const sendRecipe = () => {
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        try {
+          worker.postMessage(recipe);
+        } catch {
+          // The job was never dispatched. Release the failed worker and use
+          // the same inline fallback as a worker that failed to start.
+          resolve(null);
+        }
+      };
       worker.onerror = (event) => {
         event.preventDefault();
         if (ready) reject(new Error(event.message || 'Material worker stopped.'));
@@ -40,7 +53,7 @@ async function bakeInWorker(recipe: GenerationRecipe, signal: AbortSignal, progr
           case 'ready':
             if (!data.supported) return resolve(null);
             ready = true;
-            worker.postMessage(recipe);
+            sendRecipe();
             break;
           case 'progress':
             progress(data.fraction, data.stage);
@@ -53,7 +66,7 @@ async function bakeInWorker(recipe: GenerationRecipe, signal: AbortSignal, progr
             reject(new Error(data.message));
         }
       };
-      if (ready) worker.postMessage(recipe);
+      if (ready) sendRecipe();
     });
   } finally {
     signal.removeEventListener('abort', abort);
