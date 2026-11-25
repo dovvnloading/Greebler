@@ -279,13 +279,16 @@ test('preserves art direction across preset edits, undo, redo and saved recipes'
 });
 
 test('falls back to texture inspection if the real renderer fails after the WebGL probe', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.addInitScript(() => {
-    let requests = 0;
     HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.getContext, {
       apply(target, canvas, args) {
         if (args[0] === 'webgl2' || args[0] === 'webgl' || args[0] === 'experimental-webgl') {
-          requests++;
-          if (requests > 1) return null;
+          if (canvas.isConnected) {
+            document.documentElement.dataset.webglRendererDenied = 'true';
+            return null;
+          }
           const context = Reflect.apply(target, canvas, args);
           if (context) document.documentElement.dataset.webglProbePassed = 'true';
           return context;
@@ -296,6 +299,7 @@ test('falls back to texture inspection if the real renderer fails after the WebG
   });
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-webgl-probe-passed', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-webgl-renderer-denied', 'true');
   await expect(page.getByRole('button', { name: '3D view', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Split view', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '2D view', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -309,4 +313,5 @@ test('falls back to texture inspection if the real renderer fails after the WebG
   const file = await downloaded;
   expect(file.suggestedFilename()).toBe('greeble_height.png');
   expect(await file.failure()).toBeNull();
+  expect(pageErrors).toEqual([]);
 });

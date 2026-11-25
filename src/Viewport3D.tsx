@@ -1,4 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentRef,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import {
   Box,
   Circle,
@@ -13,7 +23,7 @@ import {
   Sun,
   ChevronDown,
 } from 'lucide-react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, type Frameloop } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { getGenerationRecipeId } from './recipes';
@@ -387,6 +397,56 @@ const shapes = [
   { value: 'plane', label: 'Plane', icon: Square },
 ] as const;
 
+// R3F Canvas configures its renderer asynchronously. A constructor failure
+// there rejects outside React's error boundary, so allocate on the real canvas
+// first and keep it unmeasurable until a valid renderer can be handed to R3F.
+function PreviewCanvas({
+  children,
+  frameloop,
+  onUnavailable,
+}: {
+  children: ReactNode;
+  frameloop: Frameloop;
+  onUnavailable: () => void;
+}) {
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [renderer, setRenderer] = useState<THREE.WebGLRenderer | null>(null);
+  useLayoutEffect(() => {
+    if (!canvas) return;
+    let next: THREE.WebGLRenderer;
+    try {
+      next = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+    } catch (cause) {
+      console.error('Greebler could not initialize the 3D renderer.', cause);
+      onUnavailable();
+      return;
+    }
+    setRenderer(next);
+    return () => {
+      // Also release a renderer if the Canvas was removed before R3F configured it.
+      next.dispose();
+      next.forceContextLoss();
+    };
+  }, [canvas, onUnavailable]);
+  return (
+    <Canvas
+      ref={setCanvas}
+      style={renderer ? undefined : { display: 'none' }}
+      gl={renderer ?? undefined}
+      camera={{ position: [2, 4, 4], fov: 33, near: 0.04, far: 90 }}
+      dpr={[1, 1.75]}
+      shadows={{ type: THREE.PCFShadowMap, autoUpdate: false }}
+      frameloop={frameloop}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.05;
+      }}
+    >
+      {children}
+    </Canvas>
+  );
+}
+
 export function Viewport3D({
   material,
   active = true,
@@ -454,13 +514,13 @@ export function Viewport3D({
     setAvailable(hasContext);
     if (!hasContext) onUnavailable?.();
   }, [active, onUnavailable]);
-  if (!active && (!keepWarm || available !== true || resident.current !== material.recipe)) return null;
-  function handleUnavailable() {
+  const handleUnavailable = useCallback(() => {
     capture.current = null;
     setCaptureReady(false);
     setAvailable(false);
     onUnavailable?.();
-  }
+  }, [onUnavailable]);
+  if (!active && (!keepWarm || available !== true || resident.current !== material.recipe)) return null;
   async function saveStill() {
     if (!capture.current || saving) return;
     setSaving(true);
@@ -492,16 +552,9 @@ export function Viewport3D({
         {available === false && unavailable}
         {available && (
           <ErrorBoundary fallback={unavailable} onError={handleUnavailable}>
-            <Canvas
-              camera={{ position: [2, 4, 4], fov: 33, near: 0.04, far: 90 }}
-              dpr={[1, 1.75]}
-              shadows={{ type: THREE.PCFShadowMap, autoUpdate: false }}
+            <PreviewCanvas
               frameloop={!active ? 'never' : rotating ? 'always' : 'demand'}
-              gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-              onCreated={({ gl }) => {
-                gl.toneMapping = THREE.ACESFilmicToneMapping;
-                gl.toneMappingExposure = 1.05;
-              }}
+              onUnavailable={handleUnavailable}
             >
               <Scene
                 material={material}
@@ -524,7 +577,7 @@ export function Viewport3D({
                 onError={setError}
                 onDisplay={setDisplaySize}
               />
-            </Canvas>
+            </PreviewCanvas>
           </ErrorBoundary>
         )}
         {available && (
