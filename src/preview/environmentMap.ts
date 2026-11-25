@@ -12,6 +12,43 @@ export interface EnvironmentMap {
 export const maxEnvironmentBytes = 160 * 1024 * 1024;
 const invalid = () => new Error('The HDR panorama contains incomplete or invalid scanline data.');
 
+// Older Radiance files interleave RGBE values and encode repeats with a
+// (1, 1, 1, count) marker. Consecutive markers contribute higher count bytes.
+// An uncompressed scanline is the same representation without repeat markers.
+function decodeLegacyScanline(bytes: Uint8Array, offset: number, row: Uint8Array) {
+  let pos = 0;
+  let shift = 0;
+  while (pos < row.length) {
+    if (offset + 4 > bytes.length) throw invalid();
+    const r = bytes[offset++];
+    const g = bytes[offset++];
+    const b = bytes[offset++];
+    const e = bytes[offset++];
+    if (r === 1 && g === 1 && b === 1) {
+      // The accepted panorama width is at most 8192, so two count bytes
+      // suffice. Reject excessive shifts before any integer overflow.
+      if (pos === 0 || shift > 8) throw invalid();
+      const count = e * 2 ** shift;
+      if (count > (row.length - pos) / 4) throw invalid();
+      const end = pos + count * 4;
+      for (; pos < end; pos += 4) {
+        row[pos] = row[pos - 4];
+        row[pos + 1] = row[pos - 3];
+        row[pos + 2] = row[pos - 2];
+        row[pos + 3] = row[pos - 1];
+      }
+      shift += 8;
+    } else {
+      row[pos++] = r;
+      row[pos++] = g;
+      row[pos++] = b;
+      row[pos++] = e;
+      shift = 0;
+    }
+  }
+  return offset;
+}
+
 export function decodeEnvironment(buffer: ArrayBuffer, name: string): EnvironmentMap {
   const bytes = new Uint8Array(buffer);
   const header = new TextDecoder('ascii').decode(bytes.subarray(0, 16384));
@@ -31,15 +68,25 @@ export function decodeEnvironment(buffer: ArrayBuffer, name: string): Environmen
   const height = Math.min(sourceH, 512);
   const width = height * 2;
   const pixels = new Uint16Array(width * height * 4);
+  const rowSums = new Float64Array(width * 3);
   const sums = new Float64Array(width * 3);
-  const counts = new Uint32Array(width);
   const row = new Uint8Array(sourceW * 4);
   const scales = Float64Array.from({ length: 256 }, (_, exponent) => (exponent ? 2 ** (exponent - 136) : 0));
-  const bins = Uint16Array.from({ length: sourceW }, (_, x) => Math.floor((x * width) / sourceW));
+  // Express source-pixel and destination-cell edges in integer units. A source
+  // pixel is at most one destination cell wide, so it overlaps at most two.
+  // Equal-area footprints preserve linear radiance even for non-integer ratios.
+  const bins = new Uint16Array(sourceW);
+  const weights = new Uint16Array(sourceW);
+  for (let x = 0; x < sourceW; x++) {
+    const start = x * width;
+    const bin = Math.floor(start / sourceW);
+    bins[x] = bin;
+    weights[x] = Math.min(width, (bin + 1) * sourceW - start);
+  }
+  const area = sourceW * sourceH;
   let offset = dimensions.index + dimensions[0].length;
   const rle = sourceW >= 8 && bytes[offset] === 2 && bytes[offset + 1] === 2 && (bytes[offset + 2] & 128) === 0;
-  // Uncompressed RGBE stores interleaved pixels. Modern RLE stores each scanline in four component planes.
-  if (!rle && bytes.length - offset !== sourceW * sourceH * 4) throw invalid();
+  // Legacy RGBE (including raw pixels) is interleaved. Modern RLE uses four component planes.
   for (let y = 0; y < sourceH; y++) {
     if (rle) {
       if (bytes[offset] !== 2 || bytes[offset + 1] !== 2 || ((bytes[offset + 2] << 8) | bytes[offset + 3]) !== sourceW)
@@ -59,30 +106,47 @@ export function decodeEnvironment(buffer: ArrayBuffer, name: string): Environmen
         }
         pos += count;
       }
+    } else {
+      offset = decodeLegacyScanline(bytes, offset, row);
     }
+    rowSums.fill(0);
     for (let x = 0; x < sourceW; x++) {
-      const index = rle ? x : offset + x * 4;
+      const index = rle ? x : x * 4;
       const stride = rle ? sourceW : 1;
-      const input = rle ? row : bytes;
+      const input = row;
       const exponent = input[index + 3 * stride];
       // Radiance encodes each color as an 8-bit mantissa and a shared biased exponent.
       const scale = scales[exponent];
-      const bin = bins[x];
-      counts[bin]++;
-      for (let c = 0; c < 3; c++) sums[bin * 3 + c] += input[index + c * stride] * scale;
+      const bin = bins[x] * 3;
+      const left = weights[x];
+      const right = width - left;
+      for (let c = 0; c < 3; c++) {
+        const value = input[index + c * stride] * scale;
+        rowSums[bin + c] += value * left;
+        if (right) rowSums[bin + 3 + c] += value * right;
+      }
     }
-    if (!rle) offset += sourceW * 4;
-    const outY = Math.floor((y * height) / sourceH);
-    if (outY === Math.floor(((y + 1) * height) / sourceH)) continue;
+    // Integrate the horizontally filtered row into one or two destination rows.
+    // Carry only the fractional contribution below a completed row forward.
+    const start = y * height;
+    const outY = Math.floor(start / sourceH);
+    const bottom = (outY + 1) * sourceH;
+    const overlap = Math.min(height, bottom - start);
+    const complete = start + height >= bottom;
+    const remaining = height - overlap;
     for (let x = 0; x < width; x++) {
       const p = (outY * width + x) * 4;
       for (let c = 0; c < 3; c++) {
-        pixels[p + c] = DataUtils.toHalfFloat(Math.min(65504, sums[x * 3 + c] / counts[x]));
+        const i = x * 3 + c;
+        sums[i] += rowSums[i] * overlap;
+        if (complete) {
+          pixels[p + c] = DataUtils.toHalfFloat(Math.min(65504, sums[i] / area));
+          sums[i] = rowSums[i] * remaining;
+        }
       }
-      pixels[p + 3] = 0x3c00;
+      if (complete) pixels[p + 3] = 0x3c00;
     }
-    counts.fill(0);
-    sums.fill(0);
   }
+  if (!rle && offset !== bytes.length) throw invalid();
   return { name, width, height, pixels };
 }
