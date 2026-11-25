@@ -21,7 +21,7 @@ import {
   type GenerationRecipe,
 } from './recipes';
 import { PALETTE_PRESETS } from './utils/colorUtils';
-import { recipeHistory, type RecipeSource } from './engine/recipeHistory';
+import { recipeHistory, type RecipeAction, type RecipeSource } from './engine/recipeHistory';
 import { useMaterialSession } from './engine/useMaterialSession';
 import { describeExport } from './export/materialMaps';
 import { RecipeInspector } from './components/RecipeInspector';
@@ -105,6 +105,12 @@ export default function App() {
   const [importError, setImportError] = useState('');
   const importRequest = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(
+    () => () => {
+      importRequest.current++;
+    },
+    [],
+  );
   const id = getGenerationRecipeId(recipe);
   const documentName = source?.name ?? `${styleNames[recipe.params.style]} material`;
   const modified = Boolean(source && source.recipeId !== id);
@@ -113,10 +119,16 @@ export default function App() {
   }, [documentName, modified]);
   const resolution = recipe.params.resolution;
   const output = material ? describeExport(material.recipe, recipe) : '';
+  // The request generation belongs to the document, not just the file picker.
+  // Invalidate an older read synchronously with any newer document action.
+  const dispatchDocument = useCallback((action: RecipeAction) => {
+    importRequest.current++;
+    dispatch(action);
+  }, []);
   const addRecipe = useCallback(
     (next: GenerationRecipe, group?: string) =>
-      dispatch({ type: 'edit', recipe: next, group, time: performance.now() }),
-    [],
+      dispatchDocument({ type: 'edit', recipe: next, group, time: performance.now() }),
+    [dispatchDocument],
   );
 
   useEffect(() => {
@@ -149,9 +161,8 @@ export default function App() {
   }, [notice]);
 
   function openAsset(item: LibraryMaterial) {
-    importRequest.current++;
     setImportError('');
-    dispatch({
+    dispatchDocument({
       type: 'edit',
       recipe: item.recipe,
       source: { name: item.name, recipeId: getGenerationRecipeId(item.recipe), assetId: item.id },
@@ -169,7 +180,7 @@ export default function App() {
         return 'A saved material already has this name.';
       storeLibraryMaterial(entry);
       setSaved(readLibrary());
-      dispatch({ type: 'name', source: { name, recipeId: id, assetId: entry.id } });
+      dispatchDocument({ type: 'name', source: { name, recipeId: id, assetId: entry.id } });
       setNotice('Material saved to library');
       return null;
     } catch {
@@ -192,9 +203,10 @@ export default function App() {
     setImportError('');
     try {
       if (file.size > 65536) throw new Error('A material recipe must be smaller than 64 KiB.');
-      const next = parseGenerationRecipe(await file.text());
+      const text = await file.text();
       if (request !== importRequest.current) return;
-      dispatch({
+      const next = parseGenerationRecipe(text);
+      dispatchDocument({
         type: 'edit',
         recipe: next,
         time: performance.now(),
@@ -256,7 +268,7 @@ export default function App() {
           render(recipe, 'bake');
         } else if (!textInput && (key === 'z' || key === 'y')) {
           e.preventDefault();
-          dispatch({ type: key === 'y' || e.shiftKey ? 'redo' : 'undo' });
+          dispatchDocument({ type: key === 'y' || e.shiftKey ? 'redo' : 'undo' });
         }
       } else if (e.shiftKey && e.code === 'Space' && !textInput && !e.repeat) {
         e.preventDefault();
@@ -326,7 +338,7 @@ export default function App() {
             title="Undo (Ctrl/⌘ Z)"
             className="ui-icon"
             disabled={!history.past.length}
-            onClick={() => dispatch({ type: 'undo' })}
+            onClick={() => dispatchDocument({ type: 'undo' })}
           >
             <Undo2 size={16} />
           </button>
@@ -336,7 +348,7 @@ export default function App() {
             title="Redo (Ctrl/⌘ Shift Z)"
             className="ui-icon"
             disabled={!history.future.length}
-            onClick={() => dispatch({ type: 'redo' })}
+            onClick={() => dispatchDocument({ type: 'redo' })}
           >
             <Redo2 size={16} />
           </button>
