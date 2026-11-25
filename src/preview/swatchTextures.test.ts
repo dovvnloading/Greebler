@@ -65,3 +65,50 @@ it('invalidates the height cache on structural controls and preserves legacy rec
     swatchHeightKey(legacy),
   );
 });
+
+it('decodes the exact height inline when the worker rejects dispatch and cleans up the worker', async () => {
+  const terminate = vi.fn();
+  const postMessage = vi.fn(() => {
+    throw new Error('Worker dispatch blocked');
+  });
+  class WorkerDouble {
+    static instance: WorkerDouble;
+    terminate = terminate;
+    postMessage = postMessage;
+    onmessage = null;
+    onmessageerror = null;
+    onerror = null;
+
+    constructor() {
+      WorkerDouble.instance = this;
+    }
+  }
+  vi.stubGlobal('Worker', WorkerDouble);
+  vi.stubGlobal('createImageBitmap', async () => ({ close() {} }));
+  const heights = new StripPng(2, 2, 'gray16');
+  await heights.write(Uint8Array.of(0, 0, 120, 50, 160, 160, 255, 255), 2);
+  const height = heights.blob();
+  const image = new Blob();
+  const material = {
+    recipe,
+    blobs: { albedo: image, normal: image, roughness: image, metalness: image, ao: image, orm: image, height },
+    urls: { albedo: '', normal: '', roughness: '', metalness: '', ao: '', orm: '', height: '' },
+  };
+  const signal = new AbortController().signal;
+  const removed = vi.spyOn(signal, 'removeEventListener');
+  try {
+    const textures = await loadSwatchTextures(material, 1, signal);
+    try {
+      expect(Array.from(textures.heightField?.pixels ?? [])).toEqual([160, 160, 255, 255, 0, 0, 120, 50]);
+      expect(postMessage).toHaveBeenCalledWith(height);
+      expect(terminate).toHaveBeenCalledOnce();
+      expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
+      expect(WorkerDouble.instance.onmessage).toBeNull();
+    } finally {
+      textures.dispose();
+    }
+  } finally {
+    vi.unstubAllGlobals();
+    heights.dispose();
+  }
+});

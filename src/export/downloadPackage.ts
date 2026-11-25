@@ -29,15 +29,24 @@ export async function buildDownloadPackage(
           event.preventDefault();
           resolve(null);
         };
-        active.postMessage({ material: { recipe, blobs }, target } satisfies PackageRequest);
+        signal.throwIfAborted();
+        try {
+          active.postMessage({ material: { recipe, blobs }, target } satisfies PackageRequest);
+        } catch {
+          // Some hosts allow worker creation but reject structured-clone dispatch.
+          resolve(null);
+        }
       });
+      signal.throwIfAborted();
       if (result) return result;
     } finally {
       if (abort) signal.removeEventListener('abort', abort);
+      active.onmessage = active.onmessageerror = active.onerror = null;
       active.terminate();
     }
   }
   signal.throwIfAborted();
   const { buildMaterialPackage } = await import('./materialPackage.ts');
+  signal.throwIfAborted();
   return buildMaterialPackage({ recipe, blobs }, signal, target);
 }

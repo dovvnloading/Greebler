@@ -38,6 +38,7 @@ export function swatchHeightKey(recipe: GenerationRecipe) {
 }
 
 async function readHeight(blob: Blob, signal: AbortSignal) {
+  signal.throwIfAborted();
   let worker: Worker | undefined;
   try {
     worker = new Worker(new URL('./height.worker.ts', import.meta.url), { type: 'module' });
@@ -46,39 +47,34 @@ async function readHeight(blob: Blob, signal: AbortSignal) {
   }
   if (worker) {
     const decoder = worker;
-    const cancel = () => decoder.terminate();
+    let abort: (() => void) | undefined;
     try {
       const result = await new Promise<StudioHeight | null>((resolve, reject) => {
-        const abort = () => {
-          cancel();
-          reject(signal.reason);
-        };
+        abort = () => reject(signal.reason);
         signal.addEventListener('abort', abort, { once: true });
-        const done = () => signal.removeEventListener('abort', abort);
         decoder.onerror = (e) => {
           e.preventDefault();
-          done();
           resolve(null);
         };
-        decoder.onmessageerror = () => {
-          done();
-          reject(new Error('Unreadable height texture.'));
-        };
+        decoder.onmessageerror = () => reject(new Error('Unreadable height texture.'));
         decoder.onmessage = ({ data }) => {
-          done();
           if (data.error) reject(new Error(data.error));
           else resolve(data);
         };
-        if (signal.aborted) {
-          done();
-          abort();
-          return;
+        signal.throwIfAborted();
+        try {
+          decoder.postMessage(blob);
+        } catch {
+          // A failed dispatch has not started decoding; use the bounded inline path.
+          resolve(null);
         }
-        decoder.postMessage(blob);
       });
+      signal.throwIfAborted();
       if (result) return result;
     } finally {
-      cancel();
+      if (abort) signal.removeEventListener('abort', abort);
+      decoder.onmessage = decoder.onmessageerror = decoder.onerror = null;
+      decoder.terminate();
     }
   }
   signal.throwIfAborted();
