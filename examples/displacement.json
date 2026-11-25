@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "params": {
+    "style": "displacement",
+    "resolution": 2048,
+    "seed": 3894,
+    "largeDensity": 0.86,
+    "mediumDensity": 0.76,
+    "smallDensity": 0.88,
+    "gapSize": 2,
+    "complexity": 7,
+    "palette": ["#0d192b", "#203b63", "#476f99", "#82b3c5", "#deebeb"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0,
+    "metalness": 0.78,
+    "roughness": 0.3,
+    "specularIntensity": 0.85,
+    "reliefProfile": "formed"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "params": {
+    "style": "tech",
+    "panelPattern": "truss",
+    "resolution": 2048,
+    "seed": 875,
+    "largeDensity": 0.8,
+    "mediumDensity": 0.9,
+    "smallDensity": 0.75,
+    "gapSize": 6,
+    "complexity": 4,
+    "palette": ["#302724", "#5d4135", "#9f6544", "#c89560", "#e5ce96"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0.56,
+    "reliefProfile": "formed"
+  }
+}

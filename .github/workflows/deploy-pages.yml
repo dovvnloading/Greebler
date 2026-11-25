@@ -30,6 +30,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Classify the changed files
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_BROWSER_TESTS: ${{ inputs.run_browser_tests }}
+          BEFORE: ${{ github.event.before }}
+        shell: bash
+        run: bash tools/ci-browser-policy.sh "$EVENT_NAME" "$RUN_BROWSER_TESTS" "$BEFORE" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Test browser policy
+        run: bash tools/test-ci-browser-policy.sh
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -53,11 +67,11 @@ jobs:
         run: npm test
 
       - name: Install Playwright browser
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_browser_tests }}
+        if: steps.filter.outputs.browser != 'false'
         run: npx playwright install --with-deps chromium
 
       - name: Browser smoke tests
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_browser_tests }}
+        if: steps.filter.outputs.browser != 'false'
         run: npm run test:browser
 
       - name: Build

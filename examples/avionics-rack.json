@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "params": {
+    "style": "electrical",
+    "panelPattern": "avionics",
+    "resolution": 2048,
+    "seed": 1088,
+    "largeDensity": 0.85,
+    "mediumDensity": 0.85,
+    "smallDensity": 0.8,
+    "gapSize": 4,
+    "complexity": 5,
+    "palette": ["#211d28", "#413b50", "#696579", "#998d90", "#d1c5af"],
+    "normalStrength": 1.25,
+    "aoStrength": 1.15,
+    "wear": 0.27,
+    "reliefProfile": "formed"
+  }
+}
