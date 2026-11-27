@@ -1120,22 +1120,26 @@ export function ModelWorkspace({
           <ArrowDownToLine size={14} />
           Export asset
         </button>
-        <button
-          className="ui-icon model-mobile-toggle"
-          type="button"
-          aria-label="Show assembly"
-          onClick={() => setLeftOpen(true)}
-        >
-          <Layers3 size={16} />
-        </button>
-        <button
-          className="ui-icon model-mobile-toggle"
-          type="button"
-          aria-label="Show part inspector"
-          onClick={() => setRightOpen(true)}
-        >
-          <Settings2 size={16} />
-        </button>
+        <div className="model-pane-tools">
+          <button
+            className="ui-icon model-mobile-toggle"
+            type="button"
+            aria-label="Show assembly"
+            title="Assembly"
+            onClick={() => setLeftOpen(true)}
+          >
+            <Layers3 size={16} />
+          </button>
+          <button
+            className="ui-icon model-mobile-toggle"
+            type="button"
+            aria-label="Show part inspector"
+            title="Part inspector"
+            onClick={() => setRightOpen(true)}
+          >
+            <Settings2 size={16} />
+          </button>
+        </div>
       </header>
       <div className="model-body">
         <aside className="model-left-dock">{left}</aside>

@@ -166,4 +166,37 @@ npm run lint
 npm run build
 ```
 
+### Verify the Blender handoff
+
+`tools/verify-asset-blender.py` is a focused external-application gate for Blender 4.x. It uses the [Blender glTF importer](https://docs.blender.org/api/4.0/bpy.ops.import_scene.html), then checks the resulting scene rather than rebuilding the source geometry. The check compares instance identities, mirror flags, material assignments, actual triangles, UV availability and tight world bounds after the Y-up to Z-up coordinate conversion. It also verifies the actual packed PNG bytes, decoded image dimensions, color spaces and imported Principled texture/ORM channel connections.
+
+Passing `--project` additionally compares the GLB's embedded document and recipe with the exact portable source file. The JSON report records the Blender version, source checksum, recipe ID, checks and timings. Any failed check raises an exception; Blender's `--python-exit-code 1` makes the command fail in CI.
+
+```bash
+npm run build:assets -- --out test-results/dcc \
+  examples/assets/service-module.greebler.json \
+  examples/assets/reactor-core.greebler.json
+
+blender --background --factory-startup --python-exit-code 1 \
+  --python tools/verify-asset-blender.py -- \
+  test-results/dcc/service-module.glb \
+  --project examples/assets/service-module.greebler.json \
+  --report test-results/dcc/service-module.blender.json \
+  --render test-results/dcc/service-module.png \
+  --blend test-results/dcc/service-module-review.blend \
+  --samples 32 --width 1024
+
+# Check the second asset without spending time on another render.
+blender --background --factory-startup --python-exit-code 1 \
+  --python tools/verify-asset-blender.py -- \
+  test-results/dcc/reactor-core.glb \
+  --project examples/assets/reactor-core.greebler.json
+```
+
+The optional render uses Cycles on the CPU with denoising, three area lights, an AgX view and a ground plane. Its orthographic camera fits actual projected asset bounds, then checks the framing before rendering. The render changes only the verification scene, after source assertions have passed. `--blend` saves that packed review scene. Without these options the verifier performs only import and data checks.
+
+The default render is 1024 × 768 at 48 samples. For CI planning, allow roughly 1–5 minutes for a CPU review render in addition to the asset bake, and keep a larger timeout for slower machines; this is a planning estimate, not a measured performance result. The actual timings are recorded in the report. Lower samples or width when the purpose is an import smoke check. Existing outputs are preserved unless `--force` is supplied.
+
+This gate specifically exercises the generated GLB through the installed Blender version. It does not certify other importers, OBJ material interpretation or every possible production scene.
+
 The implementation makes useful parametric kit creation and material handoff possible. It does not establish studio deployment qualification, DCC-by-DCC import certification or hardware GPU performance; those require testing on the target production pipeline.

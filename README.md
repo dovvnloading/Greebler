@@ -165,6 +165,8 @@ npm run build:assets -- --format obj --metrics --out bakes examples/assets/react
 
 The asset builder validates the complete batch before launching Chromium, bakes each project's recorded material resolution, and exports the same geometry as the model workspace. It rejects output collisions and existing outputs unless `--force` is supplied. Completed assets remain available if a later input fails. See the [modeling guide](docs/modeling.md) for project examples and the interchange contract.
 
+The [Blender asset verifier](docs/modeling.md#verify-the-blender-handoff) imports the actual GLB in Blender, checks geometry, meter scale, material wiring and original packed texture bytes, and can create a Cycles review render and packed `.blend`. CI exercises this handoff separately from browser and Khronos validation.
+
 ## Measured performance
 
 Two consecutive 8192² service-deck bakes used fresh headless Chromium processes on the same Linux host. Both runs encoded all seven PNGs in a worker. The height profile was the only recipe change.

@@ -92,7 +92,8 @@ export function ModelLighting({ bounds }: { bounds: THREE.Box3 }) {
       <hemisphereLight args={['#dce5f0', '#494b4d', 0.35]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[center.x, floorY, center.z]} receiveShadow>
         <planeGeometry args={[radius * 18, radius * 18]} />
-        <meshLambertMaterial color="#343c45" emissive="#101317" />
+        {/* Only contact shadows should reveal the finite floor; its edge must merge with the studio background. */}
+        <shadowMaterial transparent opacity={0.28} depthWrite={false} />
       </mesh>
     </>
   );

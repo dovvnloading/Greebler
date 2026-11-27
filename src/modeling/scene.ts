@@ -32,6 +32,7 @@ export function buildAssetScene(source: AssetDocument): AssetScene {
   const bounds = new Box3();
   let triangles = 0,
     vertices = 0;
+  const worldVertex = new Vector3();
   const dispose = () => {
     for (const geometry of geometries) geometry.dispose();
     // React StrictMode may replay cleanup and then reuse these CPU buffers.
@@ -79,8 +80,14 @@ export function buildAssetScene(source: AssetDocument): AssetScene {
             mirrored,
           });
           triangles += (selected.getIndex()?.count ?? 0) / 3;
-          vertices += selected.getAttribute('position').count;
-          if (selected.boundingBox) bounds.union(selected.boundingBox.clone().applyMatrix4(matrix));
+          const positions = selected.getAttribute('position');
+          vertices += positions.count;
+          // A rotated local box overestimates rounded parts, rings and wedges.
+          // Physical dimensions and export metadata use the actual world vertices.
+          for (let vertex = 0; vertex < positions.count; vertex++) {
+            worldVertex.fromBufferAttribute(positions, vertex).applyMatrix4(matrix);
+            bounds.expandByPoint(worldVertex);
+          }
         }
       }
     }

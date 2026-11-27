@@ -102,6 +102,7 @@ Material packages retain the established PNG precision and engine conversions. N
 | Mesh interchange | GLB and OBJ/MTL packages | Real authored geometry; included maps/source metadata; validator coverage |
 | Relief geometry | Physically scaled uniform-grid OBJ/MTL tile, optional closed backing, exact source maps | Native 16-bit sampling; periodic boundaries; outward winding; closed-edge incidence; no doubled relief |
 | Batch assets | CLI builds GLB or OBJ from portable studio projects | Whole-batch preflight; atomic per-file writes; deterministic source; no overwrite without explicit flag |
+| DCC handoff gate | Real Blender imports of saved-project GLBs and a Cycles review render | Source identities, triangles, physical bounds, PNG bytes, color spaces and material bindings survive import |
 | Verification | Existing regressions plus meaningful geometry, layer, package, and browser coverage | All runnable gates pass; unsupported environment checks are identified |
 | Documentation | Usage, architecture, limits, future roadmap | New artist can complete a model/material/export round trip |
 
@@ -109,8 +110,8 @@ Material packages retain the established PNG precision and engine conversions. N
 
 These are release gates to prove with representative projects and target applications, not promises attached to a button.
 
-1. **A small reference asset corpus.** Wall module, machinery enclosure, trim sheet, decal atlas, curved machinery part, and high-detail displacement tile. Store recipes/projects and expected outputs. Inspect them in Blender and at least one real game-engine project.
-2. **DCC round trips.** Automated Blender import checks for scale, node names, material bindings, texture orientation, hard edges, and normal handedness. Expand to engine import scripts only after those conventions are verified.
+1. **Expand the reference asset corpus.** Build on the four supplied assembly projects with trim sheets, decal atlases, curved machinery parts, and high-detail displacement tiles. Store expected outputs and inspect them in Blender and at least one real game-engine project.
+2. **Broader DCC round trips.** Extend the focused Blender import gate across more asset cases and supported application versions. Add asymmetric normal-orientation fixtures, save/reopen checks and engine import scripts after the conventions are verified.
 3. **Interactive performance budgets.** Measure time to first useful preview, 95th-percentile edit latency, peak memory, GPU frame time, and cancellation response on declared machines. Use worker generation and instancing where measurements justify them.
 4. **Asset-level preflight.** Detect excessive geometry, tiny bevels below texel scale, insufficient texel density, degenerate triangles, suspicious metallic values, source/bake mismatches, and oversized output. Warnings must explain an artist action.
 5. **Project migrations and durability.** Explicit migrations, recovery snapshots, file-system save support where available, and stable material/part identifiers for reimport.

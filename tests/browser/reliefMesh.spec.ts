@@ -14,9 +14,13 @@ test('downloads real closed relief geometry with physical metadata and the nativ
     });
   });
   await page.goto('/');
-  await page.getByLabel('Bake resolution').selectOption('256');
+  await page.getByLabel('Bake resolution').selectOption('512');
+  await page.getByRole('button', { name: 'Bake 512 × 512', exact: true }).click();
+  await expect(page.getByRole('img', { name: 'albedo map', exact: true })).toHaveJSProperty('naturalWidth', 512);
+  await expect(page.getByRole('progressbar', { name: 'Material render progress' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Export maps', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Export material' });
+  await expect(dialog).toContainText('Full-resolution bake');
   await dialog.getByText('Relief mesh', { exact: true }).click();
   await dialog.getByLabel('Tile width (m)', { exact: true }).fill('0.5');
   await dialog.getByLabel('Full relief (mm)', { exact: true }).fill('12');
@@ -38,8 +42,8 @@ test('downloads real closed relief geometry with physical metadata and the nativ
   const text = (name: string) => new TextDecoder().decode(files[name]);
   const manifest = JSON.parse(text('manifest.json'));
   expect(manifest.options).toEqual({ tileWidthM: 0.5, reliefMm: 12, backingMm: 2, segments: 32 });
-  expect(manifest.sourceResolution).toBe(256);
-  expect(manifest.samplingResolution).toBe(256);
+  expect(manifest.sourceResolution).toBe(512);
+  expect(manifest.samplingResolution).toBe(512);
   expect(manifest.closed).toBe(true);
   expect(manifest.geometry.triangles).toBe(2432);
   expect(manifest.geometry.boundsM.min[0]).toBe(-0.25);
@@ -51,6 +55,11 @@ test('downloads real closed relief geometry with physical metadata and the nativ
   for (const channel of ['albedo', 'normal', 'height', 'roughness', 'metalness', 'ao', 'orm'])
     expect(files[`maps/${channel}.png`]).toBeDefined();
   expect(files['maps/height.png'][24]).toBe(16);
+  const height = files['maps/height.png'];
+  const header = new DataView(height.buffer, height.byteOffset, height.byteLength);
+  expect(header.getUint32(16)).toBe(512);
+  expect(header.getUint32(20)).toBe(512);
+  expect(JSON.parse(text('recipe.json')).params.resolution).toBe(512);
   await expect(dialog.getByRole('status')).toContainText('2,432 triangles exported');
   const screenshot = info.outputPath('relief-mesh-export.png');
   await page.screenshot({ path: screenshot });

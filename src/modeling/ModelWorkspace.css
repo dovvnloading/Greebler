@@ -122,6 +122,11 @@
   align-items: center;
   gap: 3px;
 }
+.model-pane-tools {
+  display: none;
+  align-items: center;
+  gap: 4px;
+}
 .model-autosave {
   margin-left: auto;
   color: #94a498;
@@ -157,6 +162,9 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid #394048;
+}
+.model-left-dock > * {
+  flex-shrink: 0;
 }
 .model-right-dock {
   border-left: 1px solid #394048;
@@ -922,7 +930,7 @@
   box-shadow: 0 5px 20px #0005;
   font-size: 11px;
 }
-.model-mobile-toggle {
+.model-workspace .model-mobile-toggle {
   display: none;
 }
 .model-mobile-sheet .studio-dialog {
@@ -1071,6 +1079,9 @@
   }
 }
 @media (max-width: 1050px) {
+  .model-pane-tools {
+    display: flex;
+  }
   .model-body {
     grid-template-columns: 190px minmax(0, 1fr);
   }
@@ -1102,7 +1113,7 @@
   .model-left-dock {
     display: none;
   }
-  .model-mobile-toggle {
+  .model-workspace .model-mobile-toggle {
     display: inline-flex;
   }
   .model-document-icon {
@@ -1157,20 +1168,29 @@
 }
 @media (max-width: 520px) {
   .model-toolbar {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name files" "panels export";
     gap: 6px;
   }
   .model-document {
-    flex: 1;
+    grid-area: name;
   }
   .model-document input {
     width: 160px;
   }
   .model-document-tools {
-    margin-left: auto;
+    grid-area: files;
+    justify-self: end;
+    margin: 0;
+  }
+  .model-pane-tools {
+    grid-area: panels;
   }
   .model-export-button {
-    margin-left: 0;
+    grid-area: export;
+    justify-self: end;
+    margin: 0;
   }
   .model-viewport-toolbar {
     padding: 0 6px;

@@ -1,4 +1,4 @@
-import { type BufferGeometry, Vector3 } from 'three';
+import { Box3, type BufferGeometry, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createPartGeometry, effectivePartDimensions, reflectGeometry } from './geometry';
 import { assetPresets } from './presets';
@@ -220,6 +220,34 @@ describe('parametric production meshes', () => {
     expect(geometry.getAttribute('position').count).toBeGreaterThan(0);
     scene.dispose();
     expect(releases).toBe(2);
+  });
+
+  it('reports tight physical bounds for rotated elliptical rings and their array instances', () => {
+    const document = createAssetDocument();
+    document.parts = [
+      {
+        ...createPart('ring', 'ring'),
+        size: [1.2, 0.12, 0.6],
+        rotation: [31, 37, 12],
+        position: [0.4, 0.2, 0.1],
+        repeat: { count: 2, axis: 'x', spacing: 1.4 },
+      },
+    ];
+    const scene = buildAssetScene(document),
+      expected = new Box3(),
+      conservative = new Box3();
+    for (const instance of scene.instances) {
+      const transformed = instance.geometry.clone().applyMatrix4(instance.matrix);
+      transformed.computeBoundingBox();
+      if (transformed.boundingBox) expected.union(transformed.boundingBox);
+      if (instance.geometry.boundingBox)
+        conservative.union(instance.geometry.boundingBox.clone().applyMatrix4(instance.matrix));
+      transformed.dispose();
+    }
+    expect(scene.bounds.min.distanceTo(expected.min)).toBeLessThan(0.000001);
+    expect(scene.bounds.max.distanceTo(expected.max)).toBeLessThan(0.000001);
+    expect(conservative.getSize(new Vector3()).distanceTo(expected.getSize(new Vector3()))).toBeGreaterThan(0.02);
+    scene.dispose();
   });
 
   it.each(assetPresets)('builds the $name preset within its published geometry budget', (preset) => {
