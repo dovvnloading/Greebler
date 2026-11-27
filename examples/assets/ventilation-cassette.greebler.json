@@ -1,0 +1,230 @@
+{
+  "format": "greebler-asset",
+  "version": 1,
+  "document": {
+    "version": 1,
+    "name": "Ventilation cassette",
+    "tileWidthM": 1,
+    "parts": [
+      {
+        "id": "frame",
+        "name": "Cast intake frame",
+        "kind": "ring",
+        "size": [1.6, 0.18, 1.05],
+        "position": [0, 0.6, 0],
+        "rotation": [90, 0, 0],
+        "bevel": 0.025,
+        "bevelSegments": 3,
+        "segments": 8,
+        "wall": 0.1,
+        "material": "steel",
+        "color": "#53616c",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "back",
+        "name": "Recessed backplate",
+        "kind": "box",
+        "size": [1.26, 0.7, 0.055],
+        "position": [0, 0.6, -0.14],
+        "rotation": [0, 0, 0],
+        "bevel": 0.03,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "surface",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "louvers",
+        "name": "Tilted louver bank",
+        "kind": "box",
+        "size": [1.26, 0.045, 0.13],
+        "position": [0, 0.28, 0.01],
+        "rotation": [28, 0, 0],
+        "bevel": 0.008,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#a0a9ad",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 7,
+          "axis": "y",
+          "spacing": 0.108
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "spine",
+        "name": "Central reinforcement",
+        "kind": "box",
+        "size": [0.05, 0.84, 0.055],
+        "position": [0, 0.6, 0.1],
+        "rotation": [0, 0, 0],
+        "bevel": 0.009,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "paint",
+        "color": "#d4b451",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "mounts",
+        "name": "Mounting tabs",
+        "kind": "box",
+        "size": [0.2, 0.25, 0.06],
+        "position": [0.75, 0.3, -0.04],
+        "rotation": [0, 0, 0],
+        "bevel": 0.025,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "y",
+          "spacing": 0.6
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "bolts",
+        "name": "Mounting bores",
+        "kind": "ring",
+        "size": [0.07, 0.025, 0.07],
+        "position": [0.75, 0.3, 0.005],
+        "rotation": [90, 0, 0],
+        "bevel": 0.004,
+        "bevelSegments": 3,
+        "segments": 12,
+        "wall": 0.018,
+        "material": "steel",
+        "color": "#b7bec5",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "y",
+          "spacing": 0.6
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "feet",
+        "name": "Bench feet",
+        "kind": "box",
+        "size": [0.18, 0.08, 0.35],
+        "position": [0.58, 0.04, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.012,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "x"
+      }
+    ]
+  },
+  "recipe": {
+    "version": 2,
+    "params": {
+      "style": "tech",
+      "resolution": 512,
+      "seed": 46847,
+      "largeDensity": 0.85,
+      "mediumDensity": 0.85,
+      "smallDensity": 0.75,
+      "gapSize": 3,
+      "complexity": 5,
+      "palette": ["#18252a", "#314950", "#466e73", "#89a49e", "#e5dac2"],
+      "panelPattern": "thermal",
+      "reliefProfile": "formed",
+      "normalStrength": 1.25,
+      "aoStrength": 1.15,
+      "wear": 0.3,
+      "surfaceLayers": [
+        {
+          "id": "cooling-slots",
+          "name": "Recessed cooling slots",
+          "enabled": true,
+          "shape": "slots",
+          "operation": "subtract",
+          "x": 0.5,
+          "y": 0.5,
+          "width": 0.65,
+          "height": 0.5,
+          "rotation": 0,
+          "feather": 0.12,
+          "opacity": 1,
+          "amount": 0.14,
+          "repeatX": 2,
+          "repeatY": 1,
+          "material": {
+            "color": "#202b35",
+            "roughness": 0.56,
+            "metalness": 0.2
+          }
+        },
+        {
+          "id": "service-rivets",
+          "name": "Service fastening pattern",
+          "enabled": true,
+          "shape": "rivets",
+          "operation": "add",
+          "x": 0.5,
+          "y": 0.5,
+          "width": 0.72,
+          "height": 0.72,
+          "rotation": 0,
+          "feather": 0.12,
+          "opacity": 1,
+          "amount": 0.08,
+          "repeatX": 2,
+          "repeatY": 2,
+          "material": {
+            "color": "#9ba5ac",
+            "roughness": 0.24,
+            "metalness": 1
+          }
+        }
+      ]
+    }
+  }
+}

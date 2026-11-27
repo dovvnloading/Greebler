@@ -1,6 +1,50 @@
 # Greebler
 
-Greebler is a procedural hard-surface material editor. Build repeating service panels and circuit assemblies, inspect their relief under studio or raking light, and export the same material from an artist workstation or a build job. [Open the editor](https://dovvnloading.github.io/Greebler/)
+Greebler is a procedural hard-surface asset and material studio. Build editable mechanical assemblies, art-direct layered surface detail, inspect 16-bit relief, and export real geometry with coherent PBR textures from an artist workstation or a build job. [Open the editor](https://dovvnloading.github.io/Greebler/)
+
+The **Model** workspace authors physical geometry. The **Surface** workspace authors the material shared by that geometry. Portable projects keep both sources together; existing material recipes remain compatible.
+
+![The Model workspace with an editable, textured Service module, assembly outliner and physical part controls](docs/modeling-studio.png)
+
+## Studio 0.2
+
+| Workflow | What you can make |
+| --- | --- |
+| Parametric assemblies | Beveled blocks and panels, cylinders, through-rings and wedges, with precise dimensions, transforms, arrays, mirrors and per-part materials |
+| Art-directed surfaces | Ordered panels, bosses, retaining rings, vents and rivets; raise, cut or replace height and override local color, roughness and metalness |
+| Asset delivery | Named, textured GLB assets; OBJ/MTL packages with source maps, recipe, project and manifest; saved projects for repeatable batch builds |
+| Relief geometry | Physically scaled, displaced OBJ tiles with optional closed backing and the original full-resolution maps |
+| Material delivery | Seven PBR maps including true 16-bit height, glTF/OpenUSD swatches, Unreal/HDRP profiles and the existing Blender material importer |
+
+The [product and engineering plan](docs/studio-roadmap.md) documents the audit, architecture, release criteria and longer-term path. The [production pipeline specification](docs/production-pipeline.md) records units, tangent and image conventions, physical relief, supported handoffs and their limits.
+
+## Build a hard-surface asset
+
+1. Choose **Model** in the top bar. Start from **Service module**, **Reactor core**, **Ventilation cassette** or **Modular wall panel**. Each is an editable assembly of real parts.
+2. Select a part in the viewport or the **Assembly** list. Enter exact **Width**, **Height**, **Depth**, **Bevel** and subdivision values. Dimensions and positions use meters; rotations use degrees.
+3. Press **G** to move or **R** to rotate with the gizmo; **V** returns to selection. Snapping uses 1 cm and 15° increments. **F** frames the asset. Use **Clay** and **Wireframe** to review silhouettes, bevels and topology.
+4. Add primitives, duplicate parts, make linear arrays, and mirror across a world-origin plane. Hide or lock individual source parts. Repeated copies remain linked to the same editable part.
+5. Assign **Authored material**, **Machined metal** or **Solid paint**. **Material tile width** controls physical texture density consistently across differently sized parts. Switch to **Surface** to edit the shared PBR material, then return to your assembly.
+6. **Save project** downloads the assembly and its complete material recipe. **Open project** restores both. Model undo history survives workspace switches; geometry edits autosave locally. Opening a different project begins a fresh history.
+7. **Export asset** downloads a self-contained GLB or an OBJ production package. The dialog identifies the exact completed material resolution and blocks stale source/texture combinations. Bake first when you want full-resolution textures.
+
+The model viewport and exporters use the same geometry builders. GLB includes named nodes, UVs, explicit tangents, embedded base color/normal/ORM maps and source metadata. OBJ packages include all seven original PNGs, source JSON and import instructions. The viewport's **Save asset render** button captures a 2K image.
+
+Parts are individually closed solids; intersections remain separate shells. A ring has a real opening, but does not cut a hole through another part. Surface layers affect texture relief rather than part silhouettes. General mesh Booleans, automatic UV unwrapping, arbitrary high-to-low baking, collision generation and LODs are future work. [Modeling guide](docs/modeling.md)
+
+## Art-direct surface detail
+
+In **Surface → Properties → Surface layers**, add a panel, boss, ring, vent or rivet stamp. Drag its center in the placement guide, or use exact position, size and rotation controls. Choose **Raise**, **Cut** or **Replace**, set edge falloff and relief amount, and repeat the stamp across the tile. Duplicate, reorder, disable or remove layers without destroying the procedural source.
+
+Optional per-layer color, roughness and metalness create clean paint regions, exposed metal and functional accents. The final 16-bit height drives normals and AO; packed ORM remains consistent with its individual channels. Layers wrap periodically across tile edges. Existing recipes without layers retain their canonical IDs and rendering behavior. [Surface layer guide](docs/surface-layers.md)
+
+## Export actual displacement geometry
+
+Complete a Studio v2 material bake, open **Export material → Relief mesh**, and set the tile width in meters, full black-to-white relief in millimeters, grid resolution and backing thickness. **Download relief mesh ZIP** creates a triangulated OBJ tile, MTL, all seven original maps, recipe, import guide and a manifest with physical bounds and sampling details.
+
+Choose 32, 64, 128 or 256 grid segments. Positive backing closes the tile below its lowest sampled vertex; zero exports an open surface. The largest closed tile contains 134,144 triangles. Sampling preserves the native 16-bit values and periodic boundaries; sources above 2048 px are area-filtered for geometry sampling, while the package keeps every original full-resolution PNG.
+
+The exported tile already contains its relief in vertex positions. Its material uses geometric normals and leaves the full source normal and height maps unbound so the same relief is not applied twice. This uniform-grid export is useful as a relief asset or baking source. Adaptive error-bounded mesh export, residual normal baking and automatic retopology remain separate roadmap work.
 
 ![The Greebler editor with the material library, viewport, texture set and properties dock](docs/workspace.webp)
 
@@ -113,6 +157,17 @@ npm run bake -- --target openusd --out bakes examples/service-deck.json
 ```
 
 Use `--force` to replace existing outputs. Set `GREEBLER_CHROMIUM_EXECUTABLE` to use a locally installed Chromium. For repeatable pixel comparisons across machines, pin the browser and raster environment alongside the recipe. `--metrics` reports bake time, the longest gap in a 16 ms browser timer during the bake, package time, ZIP bytes and total time through disk write.
+
+### Build saved model projects
+
+```bash
+npm run build:assets -- --format glb --out bakes examples/assets/service-module.greebler.json
+npm run build:assets -- --format obj --metrics --out bakes examples/assets/reactor-core.greebler.json
+```
+
+The asset builder validates the complete batch before launching Chromium, bakes each project's recorded material resolution, and exports the same geometry as the model workspace. It rejects output collisions and existing outputs unless `--force` is supplied. Completed assets remain available if a later input fails. See the [modeling guide](docs/modeling.md) for project examples and the interchange contract.
+
+The [Blender asset verifier](docs/modeling.md#verify-the-blender-handoff) imports the actual GLB in Blender, checks geometry, meter scale, material wiring and original packed texture bytes, and can create a Cycles review render and packed `.blend`. CI exercises this handoff separately from browser and Khronos validation.
 
 ## Measured performance
 

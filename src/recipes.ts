@@ -1,3 +1,5 @@
+import { cloneSurfaceLayer, type SurfaceLayer, validSurfaceLayers } from './surface/layers.ts';
+
 export const GENERATION_RECIPE_VERSION = 2 as const;
 export type RecipeVersion = 1 | typeof GENERATION_RECIPE_VERSION;
 export type GenerationStyle = 'tech' | 'electrical' | 'displacement';
@@ -82,6 +84,7 @@ export interface GenerationParams {
   metalness?: number;
   roughness?: number;
   specularIntensity?: number;
+  surfaceLayers?: readonly SurfaceLayer[];
 }
 
 export type GenerationRecipeParams = Readonly<Omit<GenerationParams, 'palette'> & { palette: readonly string[] }>;
@@ -132,7 +135,8 @@ export function isGenerationRecipe(value: unknown): value is GenerationRecipe {
       (p.cavityDust === undefined || inRange(p.cavityDust, 0, 1)) &&
       (p.metalness === undefined || inRange(p.metalness, 0, 1)) &&
       (p.roughness === undefined || inRange(p.roughness, 0, 1)) &&
-      (p.specularIntensity === undefined || inRange(p.specularIntensity, 0, 1)))
+      (p.specularIntensity === undefined || inRange(p.specularIntensity, 0, 1)) &&
+      validSurfaceLayers(p.surfaceLayers))
   );
 }
 
@@ -172,6 +176,7 @@ export function cloneGenerationRecipe(recipe: GenerationRecipe): GenerationRecip
       ...(p.metalness === undefined ? {} : { metalness: p.metalness }),
       ...(p.roughness === undefined ? {} : { roughness: p.roughness }),
       ...(p.specularIntensity === undefined ? {} : { specularIntensity: p.specularIntensity }),
+      ...(p.surfaceLayers?.length ? { surfaceLayers: p.surfaceLayers.map(cloneSurfaceLayer) } : {}),
     },
   };
 }

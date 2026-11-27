@@ -1,5 +1,5 @@
 {
-  "name": "Greeble Generator",
-  "description": "Procedural texture generation tool for high-resolution greeble maps (Albedo, Height, Normal) with a neumorphic UI.",
+  "name": "Greebler Studio",
+  "description": "Parametric hard-surface assemblies, layered PBR materials, and 16-bit displacement authoring for game art and 3D design.",
   "requestFramePermissions": []
 }

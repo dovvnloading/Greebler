@@ -35,7 +35,7 @@ function jsonFile(value: unknown) {
   return new Blob([JSON.stringify(value, null, 2), '\n'], { type: 'application/json' });
 }
 
-async function storeFiles(files: Map<string, Blob>, signal?: AbortSignal): Promise<Blob> {
+export async function storeFiles(files: Map<string, Blob>, signal?: AbortSignal): Promise<Blob> {
   const parts: Blob[] = [];
   // ZipPassThrough emits original PNG chunks. Reuse their Blob storage so an 8K
   // package needs only one chunk of JS scratch space while computing each CRC.

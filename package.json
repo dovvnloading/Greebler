@@ -1,7 +1,7 @@
 {
   "name": "greebler",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "node": ">=24 <25",
@@ -20,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "format": "biome format --write src tests tools examples playwright.config.ts vitest.config.ts biome.json package.json tsconfig.json",
     "format:check": "biome ci --linter-enabled=false --assist-enabled=false src tests tools examples playwright.config.ts vitest.config.ts biome.json package.json tsconfig.json",
-    "bake": "node tools/bake.mjs"
+    "bake": "node tools/bake.mjs",
+    "build:assets": "node tools/build-assets.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
