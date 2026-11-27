@@ -6,6 +6,7 @@ import { type PngFormat, StripPng } from './png';
 import type { MapWriter } from './pngWorkers';
 import { FormedFinish, ReliefField, SurfaceFinish } from './surfaceBake';
 import { createStudioLayout, paintStudioLayout } from './surfaceLayout';
+import { SurfaceCompositor } from '../surface/compositor';
 
 export const mapNames = ['albedo', 'height', 'normal', 'roughness', 'metalness', 'ao', 'orm'] as const;
 export interface BakeStep {
@@ -149,6 +150,7 @@ export async function revisePreview(
   const source = previous.source;
   const nextAO = ao ? new Uint8Array(size * size) : source.ao;
   const settings = finishSettings(params);
+  const compositor = new SurfaceCompositor(params.surfaceLayers, size);
   const dustCoverage = source.dustCoverage ?? (settings.dust ? new Uint8Array(size * size) : undefined);
   const finish =
     settings.dust && !source.dustCoverage ? new SurfaceFinish(size, params.finishSeed ?? params.seed) : undefined;
@@ -180,6 +182,7 @@ export async function revisePreview(
           orm: new Uint8Array(count * 3),
         };
         packFinish(band, settings, settings.dust ? dustCoverage?.subarray(offset, offset + count) : undefined);
+        compositor.applyMaterial(band, top, rows);
         Object.assign(output, band);
       }
       await Promise.all(
@@ -224,6 +227,7 @@ export function* renderStudio(
   const machined = formed ? new FormedHeightRaster(layout, size) : undefined;
   const microfinish = formed ? new FormedFinish(size, params.finishSeed ?? params.seed, finish) : undefined;
   const settings = finishSettings(params);
+  const compositor = new SurfaceCompositor(params.surfaceLayers, size);
   const retained = capture
     ? {
         field,
@@ -267,6 +271,7 @@ export function* renderStudio(
           for (let x = 0; x < size; x++) heights[y * size + x] = finish.height(data[(row * size + x) * 4], x, y);
         }
       }
+      compositor.applyHeight(heights, top, rows);
       yield { fraction: 0.01 + (0.24 * (top + rows)) / size, stage: 'Height field' };
     }
 
@@ -300,6 +305,7 @@ export function* renderStudio(
         retained.metal.set(band.metalness, top * size);
       }
       if (settings.rough || settings.metal !== undefined || coverage) packFinish(band, settings, coverage);
+      compositor.applyMaterial(band, top, rows);
       const pending = [];
       for (const name of mapNames) {
         const write = writers[name].write(band[name], rows);

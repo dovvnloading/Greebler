@@ -4,6 +4,7 @@ import {
   Cpu,
   Dice5,
   Link2,
+  Layers3,
   Paintbrush,
   PanelsTopLeft,
   SlidersHorizontal,
@@ -32,6 +33,7 @@ import { NumberDial } from './NumberDial';
 import { PaletteEditor } from './PaletteEditor';
 import { PanelEditor } from './PanelEditor';
 import { SliderControl } from './SliderControl';
+import { SurfaceLayers } from './SurfaceLayers';
 import './RecipeInspector.css';
 
 interface RecipeInspectorProps {
@@ -218,6 +220,20 @@ export function RecipeInspector({ recipe, material, onChange }: RecipeInspectorP
           </details>
         )}
       </Section>
+      {studio && (
+        <Section title="Surface layers" icon={<Layers3 size={14} aria-hidden="true" />}>
+          <SurfaceLayers
+            layers={params.surfaceLayers ?? []}
+            albedo={material?.blobs.albedo}
+            onChange={(surfaceLayers, group) =>
+              onChange(
+                createGenerationRecipe({ ...generationParamsFromRecipe(recipe), surfaceLayers }, recipe.version),
+                group,
+              )
+            }
+          />
+        </Section>
+      )}
       <Section title="Distribution" icon={<PanelsTopLeft size={14} aria-hidden="true" />}>
         <SliderControl
           id="large-density"

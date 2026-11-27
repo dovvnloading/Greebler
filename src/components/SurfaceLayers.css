@@ -1,0 +1,308 @@
+.surface-layers {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.surface-help {
+  margin: 0;
+  color: var(--property-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.surface-stamps {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+.surface-stamps button {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 9px 1px 6px;
+  border: 1px solid #41464d;
+  border-radius: 4px;
+  background: #25282c;
+  color: #c5cbd2;
+  font-size: 9px;
+}
+.surface-stamps button:hover:enabled {
+  border-color: var(--property-accent);
+  color: var(--property-accent);
+  background: #322b24;
+}
+.surface-stamp-add {
+  position: absolute;
+  right: 2px;
+  top: 3px;
+  opacity: 0.6;
+}
+.surface-empty {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  color: #919aa6;
+  border: 1px dashed #3d444c;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.surface-empty svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.surface-stack {
+  border: 1px solid #3b4148;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.surface-layer-row {
+  display: flex;
+  min-width: 0;
+  min-height: 31px;
+  border-bottom: 1px solid #30353b;
+  background: #24272b;
+}
+.surface-layer-row.is-selected {
+  background: #3c3126;
+  box-shadow: inset 2px 0 var(--property-accent);
+}
+.surface-layer-row button {
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: #c7cdd4;
+}
+.surface-visibility {
+  flex-shrink: 0;
+  width: 32px;
+  display: grid;
+  place-items: center;
+}
+.surface-visibility[aria-pressed="false"] {
+  opacity: 0.45;
+}
+.surface-layer-select {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  text-align: left;
+  font-size: 11px;
+}
+.surface-layer-select span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.surface-layer-select small {
+  margin-left: auto;
+  color: var(--property-accent);
+  font: 14px var(--font-mono, monospace);
+}
+.surface-base {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  color: #87919d;
+  background: #1f2226;
+  font-size: 10px;
+}
+.surface-base small {
+  margin-left: auto;
+  letter-spacing: 1px;
+  font-size: 8px;
+}
+.surface-layer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.surface-layer-actions > span {
+  margin-right: auto;
+  color: var(--property-muted);
+  font: 10px var(--font-mono, monospace);
+}
+.surface-layer-actions button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 25px;
+  border: 1px solid #41464c;
+  border-radius: 3px;
+  color: #c4cad1;
+  background: #282b30;
+}
+.surface-layer-actions button:hover:enabled {
+  color: var(--property-accent);
+  border-color: #8e6b47;
+}
+.recipe-inspector input.surface-name {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid #454b52;
+  background: #23262a;
+  font: 11px var(--font-sans, sans-serif);
+}
+.surface-placement {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid #48515c;
+  border-radius: 4px;
+  background-color: #15191e;
+  background-image:
+    linear-gradient(#38424c55 1px, transparent 1px), linear-gradient(90deg, #38424c55 1px, transparent 1px);
+  background-size: 25% 25%;
+  touch-action: none;
+}
+.recipe-inspector button.surface-placement {
+  cursor: move;
+}
+.surface-placement canvas,
+.surface-placement svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+.surface-placement canvas {
+  opacity: 0.58;
+}
+.surface-placement svg {
+  overflow: hidden;
+}
+.surface-outline {
+  stroke: #b3c4d2;
+  fill: #92b5d21a;
+  stroke-width: 3;
+  opacity: 0.55;
+}
+.surface-outline-selected {
+  stroke: #ffbd72;
+  fill: #ffae5825;
+  stroke-width: 5;
+}
+.surface-placement-center {
+  stroke: #ffe3bf;
+  stroke-width: 5;
+  fill: none;
+}
+.surface-placement-label {
+  position: absolute;
+  bottom: 6px;
+  left: 7px;
+  padding: 3px 5px;
+  background: #14181ed9;
+  color: #d5ae7d;
+  font: 8px var(--font-mono, monospace);
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+.surface-transform-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.surface-number {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 5px;
+  border: 1px solid #3c444d;
+  border-radius: 3px;
+  background: #24282d;
+}
+.surface-number > span:first-child {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #a8b1bd;
+}
+.surface-number input {
+  text-align: right;
+  padding: 0;
+}
+.surface-number-unit {
+  color: #7e8997;
+  font-size: 9px;
+}
+.surface-array {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1fr;
+  gap: 6px;
+  align-items: end;
+  padding-top: 4px;
+}
+.surface-array > span {
+  align-self: center;
+  color: var(--property-label);
+  font-size: 11px;
+}
+.surface-array label {
+  display: grid;
+  gap: 4px;
+  color: var(--property-muted);
+  font-size: 9px;
+}
+.surface-material-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 0;
+  border-top: 1px solid #353b43;
+  border-bottom: 1px solid #353b43;
+  font-size: 11px;
+}
+.surface-material-toggle input {
+  accent-color: var(--property-accent);
+}
+.surface-material {
+  display: grid;
+  gap: 8px;
+}
+.surface-color {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.surface-color input {
+  margin-left: auto;
+  width: 30px;
+  height: 24px;
+  padding: 1px;
+  border: 1px solid #50565e;
+  border-radius: 3px;
+  background: #252a2f;
+}
+.surface-color code {
+  color: var(--property-muted);
+  font-size: 10px;
+}
+.surface-center {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  color: #aeb9c7;
+  border: 1px solid #3c454f;
+  background: #242930;
+  border-radius: 3px;
+  font-size: 10px;
+}
+.surface-center:hover {
+  color: var(--property-accent);
+}

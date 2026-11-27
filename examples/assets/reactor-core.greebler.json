@@ -1,0 +1,206 @@
+{
+  "format": "greebler-asset",
+  "version": 1,
+  "document": {
+    "version": 1,
+    "name": "Reactor core",
+    "tileWidthM": 0.8,
+    "parts": [
+      {
+        "id": "base",
+        "name": "Octagonal foundation",
+        "kind": "cylinder",
+        "size": [1.2, 0.15, 1.2],
+        "position": [0, 0.075, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.025,
+        "bevelSegments": 3,
+        "segments": 8,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#3d4752",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "barrel",
+        "name": "Central pressure vessel",
+        "kind": "cylinder",
+        "size": [0.7, 1.12, 0.7],
+        "position": [0, 0.71, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.045,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "surface",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "collars",
+        "name": "Structural collars",
+        "kind": "ring",
+        "size": [0.88, 0.09, 0.88],
+        "position": [0, 0.3, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.013,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.07,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 3,
+          "axis": "y",
+          "spacing": 0.39
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "cap",
+        "name": "Top service cap",
+        "kind": "cylinder",
+        "size": [0.86, 0.13, 0.86],
+        "position": [0, 1.31, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.025,
+        "bevelSegments": 3,
+        "segments": 12,
+        "wall": 0.06,
+        "material": "surface",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "top-port",
+        "name": "Vent aperture",
+        "kind": "ring",
+        "size": [0.37, 0.09, 0.37],
+        "position": [0, 1.405, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.012,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "posts",
+        "name": "External support posts",
+        "kind": "box",
+        "size": [0.08, 1.05, 0.08],
+        "position": [-0.42, 0.675, -0.42],
+        "rotation": [0, 0, 0],
+        "bevel": 0.015,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "paint",
+        "color": "#e0a247",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "z",
+          "spacing": 0.84
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "feed",
+        "name": "Feed conduit",
+        "kind": "ring",
+        "size": [0.11, 0.9, 0.11],
+        "position": [0.49, 0.69, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.006,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.018,
+        "material": "steel",
+        "color": "#a07047",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "feet",
+        "name": "Mounting feet",
+        "kind": "box",
+        "size": [0.24, 0.06, 0.22],
+        "position": [0.43, 0.03, -0.43],
+        "rotation": [0, 0, 0],
+        "bevel": 0.012,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "z",
+          "spacing": 0.86
+        },
+        "mirror": "x"
+      }
+    ]
+  },
+  "recipe": {
+    "version": 2,
+    "params": {
+      "style": "tech",
+      "resolution": 1024,
+      "seed": 952,
+      "largeDensity": 0.8,
+      "mediumDensity": 0.9,
+      "smallDensity": 0.75,
+      "gapSize": 6,
+      "complexity": 4,
+      "palette": ["#302724", "#5d4135", "#9f6544", "#c89560", "#e5ce96"],
+      "panelPattern": "mechanical",
+      "reliefProfile": "formed",
+      "normalStrength": 1.25,
+      "aoStrength": 1.15,
+      "wear": 0.56
+    }
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "format": "greebler-asset",
+  "version": 1,
+  "document": {
+    "version": 1,
+    "name": "Service module",
+    "tileWidthM": 1.2,
+    "parts": [
+      {
+        "id": "chassis",
+        "name": "Main chassis",
+        "kind": "box",
+        "size": [1.6, 0.62, 1],
+        "position": [0, 0.39, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.045,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "surface",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "base",
+        "name": "Mounting base",
+        "kind": "box",
+        "size": [1.82, 0.12, 1.18],
+        "position": [0, 0.06, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.025,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#444d58",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "lid",
+        "name": "Replaceable top plate",
+        "kind": "panel",
+        "size": [1.44, 0.045, 0.84],
+        "position": [0, 0.72, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.012,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "surface",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "rail",
+        "name": "Protective rails",
+        "kind": "box",
+        "size": [1.72, 0.095, 0.06],
+        "position": [0, 0.69, 0.5],
+        "rotation": [0, 0, 0],
+        "bevel": 0.015,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "z"
+      },
+      {
+        "id": "front-insert",
+        "name": "Front service cover",
+        "kind": "box",
+        "size": [1.18, 0.36, 0.035],
+        "position": [0, 0.4, 0.514],
+        "rotation": [0, 0, 0],
+        "bevel": 0.012,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "surface",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "corners",
+        "name": "Corner braces",
+        "kind": "wedge",
+        "size": [0.18, 0.24, 0.16],
+        "position": [0.76, 0.21, -0.46],
+        "rotation": [0, 0, 0],
+        "bevel": 0.008,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "paint",
+        "color": "#d6a94c",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "z",
+          "spacing": 0.92
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "side-port",
+        "name": "Coupling collars",
+        "kind": "ring",
+        "size": [0.28, 0.08, 0.28],
+        "position": [0.837, 0.4, -0.24],
+        "rotation": [0, 0, 90],
+        "bevel": 0.012,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.045,
+        "material": "steel",
+        "color": "#a2a9af",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "z",
+          "spacing": 0.48
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "top-fasteners",
+        "name": "Lid fasteners",
+        "kind": "cylinder",
+        "size": [0.055, 0.028, 0.055],
+        "position": [0.63, 0.753, -0.34],
+        "rotation": [0, 0, 0],
+        "bevel": 0.005,
+        "bevelSegments": 3,
+        "segments": 6,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#8795a3",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 2,
+          "axis": "z",
+          "spacing": 0.68
+        },
+        "mirror": "x"
+      },
+      {
+        "id": "back-fins",
+        "name": "Cooling fins",
+        "kind": "box",
+        "size": [0.07, 0.38, 0.11],
+        "position": [-0.54, 0.4, -0.54],
+        "rotation": [0, 0, 0],
+        "bevel": 0.006,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "steel",
+        "color": "#343e49",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 10,
+          "axis": "x",
+          "spacing": 0.12
+        },
+        "mirror": "none"
+      },
+      {
+        "id": "top-stripe",
+        "name": "Identification stripe",
+        "kind": "panel",
+        "size": [0.08, 0.005, 0.68],
+        "position": [0.52, 0.746, 0],
+        "rotation": [0, 0, 0],
+        "bevel": 0.001,
+        "bevelSegments": 3,
+        "segments": 32,
+        "wall": 0.06,
+        "material": "paint",
+        "color": "#dbb95b",
+        "visible": true,
+        "locked": false,
+        "repeat": {
+          "count": 1,
+          "axis": "x",
+          "spacing": 0.6
+        },
+        "mirror": "none"
+      }
+    ]
+  },
+  "recipe": {
+    "version": 2,
+    "params": {
+      "style": "tech",
+      "resolution": 1024,
+      "seed": 12345,
+      "largeDensity": 0.8,
+      "mediumDensity": 0.65,
+      "smallDensity": 0.55,
+      "gapSize": 4,
+      "complexity": 5,
+      "palette": ["#121a22", "#304457", "#596e75", "#b78e61", "#ebd9ba"],
+      "panelPattern": "mixed",
+      "reliefProfile": "formed",
+      "normalStrength": 1.2,
+      "aoStrength": 1.15,
+      "wear": 0.42
+    }
+  }
+}

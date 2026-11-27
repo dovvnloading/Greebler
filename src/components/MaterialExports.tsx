@@ -10,6 +10,7 @@ import {
   type CompletedMaterial,
   type ExportTarget,
 } from '../export/materialMaps';
+import { ReliefMeshExport } from './ReliefMeshExport';
 
 function download(url: string, name: string) {
   const anchor = document.createElement('a');
@@ -160,6 +161,7 @@ export function MaterialExports({
             </button>
           )}
         </div>
+        <ReliefMeshExport material={material} intendedRecipe={intendedRecipe} externalBusy={packing} />
         <fieldset className="export-maps" aria-label="Download individual PNG maps">
           <legend>
             <SquareStack size={14} />

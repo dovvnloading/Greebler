@@ -89,5 +89,14 @@ jobs:
       - name: Browser smoke tests
         run: npm run test:browser
 
+      - name: Preserve browser screenshots and failure traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-evidence
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Build GitHub Pages artifact
         run: npm run build

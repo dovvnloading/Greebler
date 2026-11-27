@@ -1,12 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   ArrowDownToLine,
+  Boxes,
   FileBox,
   FolderOpen,
   Hammer,
   Keyboard,
   PanelLeft,
   PanelRight,
+  Paintbrush,
   Redo2,
   Save,
   Undo2,
@@ -39,6 +51,12 @@ import {
   isLibraryStorageKey,
   type LibraryMaterial,
 } from './workspace/materialLibrary';
+import type { AssetHistory } from './modeling/history';
+import './modeling/ModelWorkspace.css';
+
+const ModelWorkspace = lazy(() =>
+  import('./modeling/ModelWorkspace').then((module) => ({ default: module.ModelWorkspace })),
+);
 
 const recipeKey = 'greebler.editor.recipe';
 const documentKey = 'greebler.editor.source.v1';
@@ -84,6 +102,11 @@ function initialLibrary() {
 }
 
 export default function App() {
+  const [workspace, setWorkspace] = useState<'surface' | 'model'>('surface');
+  const modelSession = useRef<AssetHistory | null>(null);
+  const rememberModel = useCallback((next: AssetHistory) => {
+    modelSession.current = next;
+  }, []);
   const [history, dispatch] = useReducer(recipeHistory, undefined, () => {
     const current = loadRecipe();
     const factory = factoryMaterials.find(
@@ -241,6 +264,8 @@ export default function App() {
             'textarea, [contenteditable=true], input:not([type]), input:is([type=text],[type=search],[type=number],[type=email],[type=url],[type=tel],[type=password])',
           );
       const key = e.key.toLowerCase();
+      // The model workspace owns its source document and history shortcuts.
+      if (workspace === 'model' && (e.metaKey || e.ctrlKey) && ['s', 'o', 'z', 'y', 'k'].includes(key)) return;
       if (e.metaKey || e.ctrlKey) {
         if (key === 's' && !e.shiftKey) {
           e.preventDefault();
@@ -295,12 +320,38 @@ export default function App() {
           />
           <h1>Greebler</h1>
         </div>
+        <nav className="studio-workspaces" aria-label="Studio workspace">
+          <button
+            type="button"
+            aria-label="Surface workspace"
+            aria-pressed={workspace === 'surface'}
+            onClick={() => {
+              setWorkspace('surface');
+              layout.closeDrawer();
+            }}
+          >
+            <Paintbrush size={13} />
+            Surface
+          </button>
+          <button
+            type="button"
+            aria-label="Model workspace"
+            aria-pressed={workspace === 'model'}
+            onClick={() => {
+              setWorkspace('model');
+              layout.closeDrawer();
+            }}
+          >
+            <Boxes size={14} />
+            Model
+          </button>
+        </nav>
         <div className="document-label">
           <FileBox size={15} />
           <span title={documentName}>{documentName}</span>
           {modified && <i role="img" aria-label="Modified recipe" title="Modified recipe" />}
         </div>
-        <div className="document-actions">
+        <div className="document-actions" hidden={workspace === 'model'}>
           <button
             type="button"
             className="ui-icon file-action"
@@ -385,7 +436,7 @@ export default function App() {
             <span>Export</span>
           </button>
         </div>
-        <div className="layout-tools">
+        <div className="layout-tools" hidden={workspace === 'model'}>
           <button
             type="button"
             className="dock-switch"
@@ -412,6 +463,7 @@ export default function App() {
       </header>
       <div
         className="workbench"
+        data-studio={workspace}
         style={
           {
             '--library-w': `${layout.layout.libraryWidth}px`,
@@ -419,7 +471,7 @@ export default function App() {
           } as CSSProperties
         }
       >
-        {layout.library && (
+        {workspace === 'surface' && layout.library && (
           <>
             <aside id="studio-library" className="library-dock">
               {library}
@@ -432,10 +484,33 @@ export default function App() {
             />
           </>
         )}
-        <main aria-label="Material workspace" className="workbench-main">
-          <MaterialWorkspace material={material} focused={layout.focused} onToggleFocus={layout.toggleFocus} />
+        <main aria-label={workspace === 'model' ? 'Model workspace' : 'Material workspace'} className="workbench-main">
+          {workspace === 'model' ? (
+            <Suspense
+              fallback={
+                <div className="mw-wait" role="status">
+                  Opening modeling studio…
+                </div>
+              }
+            >
+              <ModelWorkspace
+                recipe={recipe}
+                material={material}
+                onRecipeChange={addRecipe}
+                onBake={() => render(recipe, 'bake')}
+                baking={Boolean(progress)}
+                focused={layout.focused}
+                onToggleFocus={layout.toggleFocus}
+                onNotice={setNotice}
+                initialHistory={modelSession.current}
+                onHistoryChange={rememberModel}
+              />
+            </Suspense>
+          ) : (
+            <MaterialWorkspace material={material} focused={layout.focused} onToggleFocus={layout.toggleFocus} />
+          )}
         </main>
-        {layout.properties && (
+        {workspace === 'surface' && layout.properties && (
           <>
             <DockResize
               side="properties"
