@@ -1,6 +1,6 @@
 """Verify a Greebler GLB through Blender's real importer, optionally rendering it.
 
-Run with Blender 4.x --background --factory-startup --python-exit-code 1.
+Run with Blender 4.0 or newer --background --factory-startup --python-exit-code 1.
 This checks an external application's interpretation, not another mesh generator.
 """
 import argparse
@@ -249,6 +249,27 @@ def aim(obj, target):
     obj.rotation_euler = (Vector(target) - obj.location).to_track_quat('-Z', 'Y').to_euler()
 
 
+def configure_cpu_denoising(scene):
+    """Match Cycles' own build-capability check; distribution builds may omit OIDN.
+
+    Blender's Cycles addon uses _cycles.with_openimagedenoise to populate the
+    available denoiser enum. Rendering without that optional feature retains
+    every import assertion and the same fixed-seed Cycles lighting proof.
+    """
+    try:
+        import _cycles
+        available = bool(getattr(_cycles, 'with_openimagedenoise', False))
+    except ImportError:
+        available = False
+    scene.cycles.use_denoising = available
+    if available:
+        scene.cycles.denoiser = 'OPENIMAGEDENOISE'
+        if hasattr(scene.cycles, 'denoising_use_gpu'):
+            scene.cycles.denoising_use_gpu = False
+    else:
+        print('Greebler verifier: OpenImageDenoise unavailable; using the fixed-seed Cycles CPU render without denoising.')
+
+
 def prepare_render(bounds, width, samples):
     scene = bpy.context.scene
     low, high = Vector(bounds['min']), Vector(bounds['max'])
@@ -257,7 +278,7 @@ def prepare_render(bounds, width, samples):
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
     scene.cycles.samples = samples
-    scene.cycles.use_denoising = True
+    configure_cpu_denoising(scene)
     scene.cycles.seed = 0
     scene.render.resolution_x = width
     scene.render.resolution_y = round(width * 0.75)
@@ -388,6 +409,7 @@ def main():
             publish(png, target, args.force)
             report['render'] = {'file': str(target), 'engine': 'Cycles CPU', 'samples': args.samples,
                                 'width': args.width, 'height': round(args.width * 0.75),
+                                'denoiser': 'OpenImageDenoise CPU' if scene.cycles.use_denoising else 'none',
                                 'seconds': round(time.perf_counter() - render_started, 3)}
     if args.blend:
         target = args.blend.absolute()

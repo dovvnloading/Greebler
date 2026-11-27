@@ -86,6 +86,9 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
+      - name: Check relief export before the full browser suite
+        run: npm run test:browser -- tests/browser/reliefMesh.spec.ts
+
       - name: Browser smoke tests
         run: npm run test:browser
 
@@ -118,7 +121,7 @@ jobs:
       - name: Install asset bake and DCC runtimes
         run: |
           npx playwright install --with-deps chromium
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy
       - name: Build actual source projects and verify Blender imports
         run: |
           npm run build:assets -- --out test-results/dcc examples/assets/service-module.greebler.json examples/assets/reactor-core.greebler.json

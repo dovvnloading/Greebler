@@ -4,6 +4,8 @@ Greebler is a procedural hard-surface asset and material studio. Build editable 
 
 The **Model** workspace authors physical geometry. The **Surface** workspace authors the material shared by that geometry. Portable projects keep both sources together; existing material recipes remain compatible.
 
+![The Model workspace with an editable, textured Service module, assembly outliner and physical part controls](docs/modeling-studio.png)
+
 ## Studio 0.2
 
 | Workflow | What you can make |

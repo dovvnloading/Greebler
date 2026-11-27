@@ -25,7 +25,7 @@ test('downloads real closed relief geometry with physical metadata and the nativ
   await dialog.getByLabel('Tile width (m)', { exact: true }).fill('0.5');
   await dialog.getByLabel('Full relief (mm)', { exact: true }).fill('12');
   await dialog.getByLabel('Backing (mm)', { exact: true }).fill('2');
-  await dialog.getByLabel('Grid segments', { exact: true }).selectOption('32');
+  await dialog.getByRole('combobox', { name: 'Grid segments', exact: true }).selectOption('32');
   const download = dialog.getByRole('button', { name: 'Download relief mesh ZIP', exact: true });
   await expect(download).toBeEnabled();
   // Fractional/invalid dimensions are reported before allocating geometry.

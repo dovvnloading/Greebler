@@ -154,6 +154,7 @@ export function ReliefMeshExport({
             Grid segments
             <select
               id={`${id}-segments`}
+              aria-label="Grid segments"
               value={segments}
               onChange={(event) => setSegments(Number(event.target.value) as ReliefMeshOptions['segments'])}
             >
